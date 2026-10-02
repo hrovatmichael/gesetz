@@ -1,2 +1,0 @@
-import {db,json,sameOrigin,sha,cookie} from '../../_lib/auth.js';
-export async function onRequestPost({request,env}){if(!sameOrigin(request))return json({error:'Ungültiger Ursprung'},403);const token=(request.headers.get('Cookie')||'').match(/(?:^|;\s*)rm_session=([a-f0-9]{64})(?:;|$)/)?.[1];if(token&&db(env))await db(env).prepare('DELETE FROM sessions WHERE token_hash=?').bind(await sha(token)).run();return json({ok:true},200,{'Set-Cookie':cookie('',0)})}
