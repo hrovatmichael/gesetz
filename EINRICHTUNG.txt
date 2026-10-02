@@ -9,4 +9,5 @@ fetch('/api/auth/bootstrap',{method:'POST',headers:{'Content-Type':'application/
 6. Danach mit dem Menüpunkt Konto & Favoriten anmelden und Nutzer anlegen. ADMIN_BOOTSTRAP_TOKEN nach erfolgreicher Einrichtung aus Pages-Secrets entfernen und erneut deployen.
 7. Testen: zwei Nutzer anmelden, Favoriten voneinander getrennt; Admin kann Sammlungen ändern, Nutzer nicht; Nutzer deaktivieren und Zugriff prüfen.
 
+
 WICHTIG: ZIP enthält KEINE D1-Datenbank, Passwörter oder Cloudflare-Secrets. Bestehende Sammlungen bleiben bei Nutzung derselben D1 erhalten. Vergleichsstand für RIS bleibt weiterhin nur im jeweiligen Browser. Ohne echtes Pages-Projekt mit Functions funktionieren API und Anmeldung nicht.
