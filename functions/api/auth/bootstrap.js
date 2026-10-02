@@ -52,6 +52,11 @@ const hash = await hashPassword(x.password, salt);
 
   } catch (e) {
     console.error('Admin-Bootstrap fehlgeschlagen:', e);
-    return json({ error: 'Admin-Einrichtung fehlgeschlagen', schritt }, 503);
+    return json({
+  error: 'Admin-Einrichtung fehlgeschlagen',
+  schritt,
+  fehlertyp: e?.name || 'Unbekannt',
+  detail: e?.message || 'Keine Fehlermeldung'
+}, 503);
   }
 }
