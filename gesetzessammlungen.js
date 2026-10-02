@@ -1,7 +1,7 @@
 'use strict';
 /* Add-on: Gesetzessammlungen. Bestehende Menuepunkte und Funktionen bleiben unveraendert. */
 (() => {
-  const groups = {
+  let groups = {
     'Arbeitnehmerschutz': [
       ['ArbeitnehmerInnenschutzgesetz','ASchG'],['Sicherheits- und Gesundheitsschutzdokumente','DOK-VO'],
       ['Betriebsrats-Geschäftsordnung 1974','BRGO 1974'],['Allgemeine Arbeitnehmerschutzverordnung','AAV'],
@@ -48,6 +48,8 @@
   const api = 'https://data.bka.gv.at/ris/api/v2.6/Bundesrecht';
   const evidenceApi='/api/ris-novellen';
   const key = 'rechtsmonitor-sammlungen-v1';
+  const collectionsApi='/api/gesetzessammlungen';
+  let revision=0,onlineReady=false,adminToken='',saving=false;
   const nav = document.querySelector('.side .nav');
   const wrap = document.querySelector('main.wrap');
   if (!nav || !wrap) { console.error('Gesetzessammlungen: Layout nicht gefunden.'); return; }
@@ -56,45 +58,105 @@
   button.id = 'menuCollections'; button.textContent = '▤   Gesetzessammlungen';
   nav.append(button);
   const panel = document.createElement('div'); panel.id = 'collectionsPanel'; panel.hidden = true;
-  panel.innerHTML = `<div class="eyebrow">RIS · FESTE BEOBACHTUNGSLISTE</div>
+  panel.innerHTML = `<div class="eyebrow">RIS · BEARBEITBARE BEOBACHTUNGSLISTE</div>
     <h1>Gesetzessammlungen</h1>
-    <p class="sub">Arbeitnehmerschutz, Lagerung und Transport. Einträge werden im RIS gesucht; Abweichungen seit dem letzten erfolgreichen Abruf werden markiert.</p>
+    <p class="sub">Sammlungen und Vorschriften verwalten. Der RIS-Abgleich prüft die aktuell angezeigte Liste.</p>
     <section class="panel" style="margin-top:24px">
       <div class="panelhead"><div><h2>RIS-Abgleich</h2><div class="muted">Erster Abruf legt den Vergleichsstand nur in diesem Browser an.</div></div>
       <button type="button" class="btn" id="collectionsRefresh">Alle Sammlungen prüfen</button></div>
       <div id="collectionsStatus" class="status" role="status" aria-live="polite">Noch kein Abgleich durchgeführt.</div>
       <p class="smallnote">Novellendatum = Kundmachungsdatum des jüngsten in der RIS-Änderungsliste belegten BGBl., nicht Inkrafttreten. Ohne eindeutigen Beleg bleibt es offen. Ein geänderter RIS-Datensatz ist kein Beweis für eine Novelle.</p>
+    </section>
+    <section class="panel"><div class="panelhead"><div><h2>Sammlungen verwalten</h2><div class="muted">Änderungen werden zentral in Cloudflare D1 gespeichert und sind auf allen Geräten sichtbar. Schreibzugriff nur mit Admin-Schlüssel.</div></div></div>
+      <form id="collectionsAddGroup" class="controls"><label class="field search">Neue Sammlung
+        <input id="collectionsGroupName" type="text" maxlength="80" required placeholder="Name der neuen Sammlung"></label>
+        <button class="btn alt" type="submit">Sammlung hinzufügen</button></form>
+      <button type="button" id="collectionsImportLocal" class="btn alt" hidden>Meine bisherige Browser-Liste online übernehmen</button>
+      <div id="collectionsEditStatus" class="smallnote" role="status" aria-live="polite" style="margin-top:12px"></div>
     </section><div id="collectionsGroups"></div>`;
   wrap.append(panel);
   const $ = id => document.getElementById(id);
   const normalize = x => String(x || '').normalize('NFKD').replace(/[\u0300-\u036f]/g,'').toLocaleLowerCase('de-AT').replace(/[^a-z0-9]/g,'');
-  const entries = Object.entries(groups).flatMap(([group, items]) => items.map(([name,abbr]) => ({group,name,abbr,id:normalize(name)})));
-  const unique = [...new Map(entries.map(x => [x.id,x])).values()];
   let saved = {}, current = {}, busy = false;
   try { saved = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch {}
   const cells = new Map();
   const status = (text,warning=false) => { $('collectionsStatus').className = 'status'+(warning?' warn':''); $('collectionsStatus').textContent=text; };
-  for (const [group, items] of Object.entries(groups)) {
-    const section=document.createElement('section'); section.className='panel';
-    const heading=document.createElement('h2');heading.textContent=group;section.append(heading);
-    const scroller=document.createElement('div');scroller.className='tablewrap';scroller.style.marginTop='14px';
-    const table=document.createElement('table');table.className='table';
-    const thead=document.createElement('thead');const header=document.createElement('tr');
-    for(const label of ['Vorschrift','RIS-Stand / Veränderung','RIS-Datum','Letzte Gesetzesänderung','Original']){
-      const th=document.createElement('th');th.textContent=label;header.append(th);
-    }
-    thead.append(header);table.append(thead);
-    const tbody=document.createElement('tbody');table.append(tbody);scroller.append(table);section.append(scroller);$('collectionsGroups').append(section);
-    for(const [name,abbr] of items){
-      const id=normalize(name),tr=document.createElement('tr');
-      const title=document.createElement('td');title.className='title';title.textContent=name+(abbr?' ('+abbr+')':'');tr.append(title);
-      const state=document.createElement('td');state.textContent='Noch nicht geprüft';tr.append(state);
-      const date=document.createElement('td');date.textContent='—';tr.append(date);
-      const amendment=document.createElement('td');amendment.textContent='Nicht verifiziert';tr.append(amendment);
-      const link=document.createElement('td');link.textContent='—';tr.append(link);tbody.append(tr);
-      if(!cells.has(id))cells.set(id,[]);cells.get(id).push({state,date,amendment,link});
+  const editStatus = text => { $('collectionsEditStatus').textContent=text; };
+  async function loadOnline(){
+    try{const response=await fetch(collectionsApi,{cache:'no-store'});if(!response.ok)throw Error('HTTP '+response.status);
+      const data=await response.json();if(!data.groups||!Number.isInteger(data.revision))throw Error('Ungültige Serverantwort');
+      groups=data.groups;revision=data.revision;onlineReady=true;renderGroups();
+      editStatus('Online-Daten geladen · Version '+revision+'. Änderungen sind auf allen Geräten sichtbar.');
+      $('collectionsImportLocal').hidden=!localLegacy();
+    }catch(e){onlineReady=false;editStatus('Online-Speicher nicht erreichbar ('+String(e.message||e)+'). Bearbeiten gesperrt.');}
+  }
+  function localLegacy(){try{const x=JSON.parse(localStorage.getItem('rechtsmonitor-sammlungen-liste-v1')||'null');return x&&typeof x==='object'&&!Array.isArray(x)?x:null}catch{return null}}
+  $('collectionsImportLocal').addEventListener('click',async()=>{
+    const legacy=localLegacy();if(!legacy||!onlineReady||saving||busy)return;
+    if(!confirm('Die aktuelle Online-Liste durch die bisherige Liste dieses Browsers ersetzen? Dies betrifft alle Geräte.'))return;
+    groups=legacy;
+    if(await persist()){$('collectionsImportLocal').hidden=true;localStorage.removeItem('rechtsmonitor-sammlungen-liste-v1');renderGroups();editStatus('Bisherige Browser-Liste online übernommen.');}
+  });
+  async function persist(){
+    if(!onlineReady||saving){editStatus('Online-Speicher nicht bereit oder Speichern läuft.');await loadOnline();return false;}
+    saving=true;
+    if(!adminToken){const input=prompt('Admin-Schlüssel für Online-Änderungen eingeben:');if(!input){saving=false;await loadOnline();editStatus('Nicht gespeichert: Admin-Schlüssel fehlt.');return false}adminToken=input;}
+    try{const response=await fetch(collectionsApi,{method:'PUT',headers:{'Content-Type':'application/json','Authorization':'Bearer '+adminToken},body:JSON.stringify({groups,revision})});
+      if(!response.ok){if(response.status===401||response.status===403)adminToken='';throw Error('HTTP '+response.status)}
+      const data=await response.json();revision=data.revision;saving=false;editStatus('Online gespeichert · Version '+revision);return true;
+    }catch(e){saving=false;await loadOnline();editStatus('Änderung NICHT gespeichert ('+String(e.message||e)+'). Aktueller Serverstand wurde neu geladen.');return false;}
+  }
+  function renderGroups(){
+    cells.clear();$('collectionsGroups').replaceChildren();
+    for(const [group,items] of Object.entries(groups)){
+      const section=document.createElement('section');section.className='panel';
+      const head=document.createElement('div');head.className='panelhead';
+      const heading=document.createElement('h2');heading.textContent=group+' · '+items.length+' Vorschriften';head.append(heading);
+      const removeGroup=document.createElement('button');removeGroup.type='button';removeGroup.className='btn alt';removeGroup.textContent='Sammlung löschen';
+      removeGroup.addEventListener('click',async()=>{if(busy){editStatus('Bitte laufenden RIS-Abgleich abwarten.');return}
+        if(!confirm('Sammlung „'+group+'“ samt aller Einträge wirklich entfernen?'))return;
+        delete groups[group];if(await persist()){renderGroups();editStatus('Sammlung online entfernt.');}});head.append(removeGroup);section.append(head);
+      const form=document.createElement('form');form.className='controls';
+      const lawLabel=document.createElement('label');lawLabel.className='field search';lawLabel.textContent='Vorschrift hinzufügen';
+      const law=document.createElement('input');law.type='text';law.maxLength=160;law.required=true;law.placeholder='Name der Vorschrift';lawLabel.append(law);form.append(lawLabel);
+      const shortLabel=document.createElement('label');shortLabel.className='field';shortLabel.textContent='Abkürzung (optional)';
+      const short=document.createElement('input');short.type='text';short.maxLength=40;short.placeholder='z. B. ASchG';shortLabel.append(short);form.append(shortLabel);
+      const add=document.createElement('button');add.type='submit';add.className='btn alt';add.textContent='Vorschrift hinzufügen';form.append(add);
+      form.addEventListener('submit',async e=>{e.preventDefault();if(busy){editStatus('Bitte laufenden RIS-Abgleich abwarten.');return}
+        const name=law.value.trim(),abbr=short.value.trim();if(!name)return;
+        if(groups[group].some(x=>normalize(x[0])===normalize(name))){editStatus('Diese Vorschrift ist in der Sammlung bereits enthalten.');return}
+        groups[group].push([name,abbr]);if(await persist()){renderGroups();editStatus('Vorschrift online hinzugefügt: '+name);}});
+      section.append(form);
+      const scroller=document.createElement('div');scroller.className='tablewrap';scroller.style.marginTop='14px';
+      const table=document.createElement('table');table.className='table';
+      const thead=document.createElement('thead'),header=document.createElement('tr');
+      for(const label of ['Vorschrift','RIS-Stand / Veränderung','RIS-Datum','Letzte Gesetzesänderung','Original','Verwalten']){
+        const th=document.createElement('th');th.textContent=label;header.append(th)}
+      thead.append(header);table.append(thead);
+      const tbody=document.createElement('tbody');table.append(tbody);scroller.append(table);section.append(scroller);$('collectionsGroups').append(section);
+      for(const [name,abbr] of items){
+        const id=normalize(name),tr=document.createElement('tr');
+        const title=document.createElement('td');title.className='title';title.textContent=name+(abbr?' ('+abbr+')':'');tr.append(title);
+        const state=document.createElement('td');state.textContent='Noch nicht geprüft';tr.append(state);
+        const date=document.createElement('td');date.textContent='—';tr.append(date);
+        const amendment=document.createElement('td');amendment.textContent='Nicht verifiziert';tr.append(amendment);
+        const link=document.createElement('td');link.textContent='—';tr.append(link);
+        const manage=document.createElement('td'),remove=document.createElement('button');remove.type='button';remove.className='btn alt';remove.textContent='Entfernen';
+        remove.addEventListener('click',async()=>{if(busy){editStatus('Bitte laufenden RIS-Abgleich abwarten.');return}
+          groups[group]=groups[group].filter(x=>normalize(x[0])!==id);
+          if(await persist()){if(!Object.values(groups).some(list=>list.some(x=>normalize(x[0])===id))){delete saved[id];delete current[id];try{localStorage.setItem(key,JSON.stringify(saved))}catch{}}renderGroups();editStatus('Vorschrift online entfernt: '+name);}});
+        manage.append(remove);tr.append(manage);tbody.append(tr);
+        if(!cells.has(id))cells.set(id,[]);cells.get(id).push({state,date,amendment,link});
+        if(current[id])display({id},current[id]);
+      }
     }
   }
+  $('collectionsAddGroup').addEventListener('submit',async e=>{e.preventDefault();if(busy){editStatus('Bitte laufenden RIS-Abgleich abwarten.');return}
+    const input=$('collectionsGroupName'),name=input.value.trim();if(!name)return;
+    if(Object.keys(groups).some(x=>normalize(x)===normalize(name))){editStatus('Sammlung bereits vorhanden.');return}
+    groups[name]=[];if(await persist()){renderGroups();input.value='';editStatus('Sammlung online angelegt: '+name);}
+  });
+  renderGroups();loadOnline();
   const metadata = (doc, paths) => {
     const root=doc?.Data?.Metadaten||{};
     for(const path of paths){let x=root;for(const k of path)x=x?.[k];if(typeof x==='string'&&x.trim())return x.trim();}
@@ -146,7 +208,10 @@
     return {state,date,url:link,fingerprint,lawNumber};
   }
   async function refresh(){
-    if(busy)return;busy=true;$('collectionsRefresh').disabled=true;
+    if(busy||saving)return;if(!onlineReady){status('Online-Daten nicht erreichbar; kein RIS-Abgleich möglich.',true);return}busy=true;$('collectionsRefresh').disabled=true;
+    const entries=Object.entries(groups).flatMap(([group,items])=>items.map(([name,abbr])=>({group,name,abbr,id:normalize(name)})));
+    const unique=[...new Map(entries.map(x=>[x.id,x])).values()];
+    if(!unique.length){busy=false;$('collectionsRefresh').disabled=false;status('Keine Vorschriften vorhanden. Bitte eine Vorschrift hinzufügen.');return}
     let ok=0,failed=0,changed=0,verified=0,newNovels=0;const next={...saved};
     for(let i=0;i<unique.length;i++){
       const entry=unique[i];status('Prüfe '+(i+1)+' / '+unique.length+': '+entry.name+' …');
