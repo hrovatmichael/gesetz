@@ -30,8 +30,11 @@ export async function onRequestPost({ request, env }) {
     }
 
     schritt = 'Passwort verarbeiten';
-    const salt = random(16);
-    const hash = await hashPassword(x.password, salt);
+    schritt = 'Salt erzeugen';
+const salt = random(16);
+
+schritt = 'Passwort hashen';
+const hash = await hashPassword(x.password, salt);
 
     schritt = 'Admin in D1 speichern';
     const result = await db(env)
