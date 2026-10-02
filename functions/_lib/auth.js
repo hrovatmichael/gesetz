@@ -10,7 +10,7 @@ export async function verify(password,salt,expected){const actual=await hashPass
 export function sameOrigin(request){const origin=request.headers.get('Origin');return !!origin&&origin===new URL(request.url).origin}
 export async function body(request){if(!(request.headers.get('content-type')||'').toLowerCase().includes('application/json'))throw Error('JSON erforderlich');const text=await request.text();if(text.length>160000)throw Error('Eingabe zu groß');return JSON.parse(text)}
 export const usernameOk=x=>typeof x==='string'&&/^[a-zA-Z0-9._-]{3,40}$/.test(x);
-export const passwordOk=x=>typeof x==='string'&&x.length>=12&&x.length<=200;
+export const passwordOk=x=>typeof x==='string'&&x.length>=6&&x.length<=200;
 export async function user(request,env){if(!db(env))return null;const token=(request.headers.get('Cookie')||'').match(/(?:^|;\s*)rm_session=([a-f0-9]{64})(?:;|$)/)?.[1];if(!token)return null;return await db(env).prepare('SELECT u.id,u.username,u.role FROM sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=? AND s.expires_at>? AND u.active=1').bind(await sha(token),Date.now()).first()}
 export async function requireUser(request,env,role){if(!db(env))return {error:json({error:'D1-Binding COLLECTIONS_DB fehlt'},503)};const me=await user(request,env);return me&&(!role||me.role===role)?{me}:{error:json({error:'Anmeldung oder Berechtigung erforderlich'},401)}}
 export const cookie=(token,age)=>`rm_session=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=${age}`;
