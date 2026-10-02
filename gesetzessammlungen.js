@@ -46,6 +46,7 @@
     ]
   };
   const api = 'https://data.bka.gv.at/ris/api/v2.6/Bundesrecht';
+  const evidenceApi='/api/ris-novellen';
   const key = 'rechtsmonitor-sammlungen-v1';
   const nav = document.querySelector('.side .nav');
   const wrap = document.querySelector('main.wrap');
@@ -62,7 +63,7 @@
       <div class="panelhead"><div><h2>RIS-Abgleich</h2><div class="muted">Erster Abruf legt den Vergleichsstand nur in diesem Browser an.</div></div>
       <button type="button" class="btn" id="collectionsRefresh">Alle Sammlungen prüfen</button></div>
       <div id="collectionsStatus" class="status" role="status" aria-live="polite">Noch kein Abgleich durchgeführt.</div>
-      <p class="smallnote">„RIS-Datensatz geändert“ ist kein Nachweis einer materiellen Gesetzesänderung. Ein Datum der letzten Gesetzesnovelle wird nur angezeigt, wenn es eindeutig belegt ist; sonst „nicht verifiziert“. Prüfe das RIS-Original.</p>
+      <p class="smallnote">Novellendatum = Kundmachungsdatum des jüngsten in der RIS-Änderungsliste belegten BGBl., nicht Inkrafttreten. Ohne eindeutigen Beleg bleibt es offen. Ein geänderter RIS-Datensatz ist kein Beweis für eine Novelle.</p>
     </section><div id="collectionsGroups"></div>`;
   wrap.append(panel);
   const $ = id => document.getElementById(id);
@@ -117,7 +118,9 @@
   }
   function display(entry,result){for(const c of cells.get(entry.id)||[]){
     c.state.textContent=result.state;c.date.textContent=result.date||'Nicht angegeben';
-    c.amendment.textContent='Nicht verifiziert';c.link.replaceChildren();
+    c.amendment.replaceChildren();
+    if(result.amendmentDate&&result.amendmentUrl){const a=document.createElement('a');a.className='open';a.href=result.amendmentUrl;a.target='_blank';a.rel='noopener noreferrer';a.textContent=result.amendmentDate+' · '+result.amendmentRef+' ↗';c.amendment.append(a)}
+    else c.amendment.textContent=result.amendmentNote||'Nicht verifiziert';c.link.replaceChildren();
     if(result.url){const a=document.createElement('a');a.className='open';a.href=result.url;a.target='_blank';a.rel='noopener noreferrer';a.textContent='RIS öffnen ↗';c.link.append(a);}
     else c.link.textContent='—';
   }}
@@ -135,26 +138,33 @@
     const date=dates.sort().at(-1)||'';
     const title=metadata(docs[0],[['Bundesrecht','Titel'],['Bundesrecht','Kurztitel']]);
     const raw=metadata(docs[0],[['Allgemein','DokumentUrl']]);
+    const lawNumber=docs.map(d=>metadata(d,[['Bundesrecht','BrKons','Gesetzesnummer'],['Bundesrecht','Gesetzesnummer'],['Technisch','Gesetzesnummer']])).find(x=>/^\d{8}$/.test(x))||(docs.map(d=>metadata(d,[['Allgemein','DokumentUrl']])).join(' ').match(/Gesetzesnummer=(\d{8})/i)||[])[1]||'';
     let link='';try{let u=new URL(raw,'https://www.ris.bka.gv.at');if(u.protocol==='https:'&&/(^|\.)ris\.bka\.gv\.at$/.test(u.hostname))link=u.href;}catch{}
     const fingerprint=JSON.stringify([title,docs.map(d=>[metadata(d,[['Technisch','ID']]),metadata(d,[['Allgemein','Geaendert'],['Allgemein','Veroeffentlicht']])]).sort((a,b)=>JSON.stringify(a).localeCompare(JSON.stringify(b)))]);
     const old=saved[entry.id];
     const state=old?.fingerprint&&old.fingerprint!==fingerprint?'RIS-Datensatz geändert seit letztem Abruf':old?.fingerprint?'Keine Änderung im verglichenen RIS-Datensatz':'Erststand gespeichert';
-    return {state,date,url:link,fingerprint};
+    return {state,date,url:link,fingerprint,lawNumber};
   }
   async function refresh(){
     if(busy)return;busy=true;$('collectionsRefresh').disabled=true;
-    let ok=0,failed=0,changed=0;const next={...saved};
+    let ok=0,failed=0,changed=0,verified=0,newNovels=0;const next={...saved};
     for(let i=0;i<unique.length;i++){
       const entry=unique[i];status('Prüfe '+(i+1)+' / '+unique.length+': '+entry.name+' …');
-      try{const result=await lookup(entry);display(entry,result);current[entry.id]=result;
+      try{const result=await lookup(entry);
+        if(result.lawNumber){try{const res=await fetch(evidenceApi+'?gesetzesnummer='+encodeURIComponent(result.lawNumber),{headers:{Accept:'application/json'}});if(!res.ok)throw Error('HTTP '+res.status);const ev=await res.json();if(ev.gesetzesnummer!==result.lawNumber)throw Error('Gesetzesnummer nicht bestätigt');if(ev.date&&ev.url&&ev.reference){result.amendmentDate=ev.date;result.amendmentUrl=ev.url;result.amendmentRef=ev.reference;verified++}else result.amendmentNote=ev.note||'Keine belegte Novelle ermittelt'}catch(e){result.amendmentNote='Novellenprüfung fehlgeschlagen ('+String(e.message||e)+')'}}else result.amendmentNote='Gesetzesnummer nicht eindeutig';
+        const previous=saved[entry.id];
+        if(result.amendmentRef&&previous?.amendmentRef&&result.amendmentRef!==previous.amendmentRef){
+          result.state='Neue BGBl-Novelle seit letztem Abgleich: '+result.amendmentRef;newNovels++;
+        }
+        display(entry,result);current[entry.id]=result;
         if(result.fingerprint){ok++;if(result.state.startsWith('RIS-Datensatz geändert'))changed++;
-          next[entry.id]={fingerprint:result.fingerprint,checkedAt:new Date().toISOString()};}
+          next[entry.id]={fingerprint:result.fingerprint,amendmentRef:result.amendmentRef||previous?.amendmentRef||'',checkedAt:new Date().toISOString()};}
         else failed++;
       }catch(e){failed++;display(entry,{state:'Abruf fehlgeschlagen: '+String(e.message||e),date:'',url:''});}
     }
     saved=next;try{localStorage.setItem(key,JSON.stringify(saved));}catch{status('Browser-Speicher nicht verfügbar; Vergleichsstand kann nicht gesichert werden.',true);}
     busy=false;$('collectionsRefresh').disabled=false;
-    status(ok+' eindeutige RIS-Treffer · '+changed+' RIS-Datensätze seit dem vorherigen Abruf geändert · '+failed+' ohne eindeutiges Ergebnis. Kein automatisch verifiziertes Datum der letzten Gesetzesnovelle.',failed>0);
+    status(ok+' eindeutige RIS-Treffer · '+verified+' Novellendaten mit BGBl-Kundmachung belegt · '+newNovels+' neue BGBl-Novellen seit dem vorherigen Abgleich · '+changed+' RIS-Datensätze geändert · '+failed+' ohne eindeutigen Treffer. Nicht belegte Daten bleiben offen.',failed>0);
   }
   button.addEventListener('click',()=>{
     for(const child of wrap.children){if(child.id&&child.id!=='collectionsPanel'&&/Panel$/.test(child.id))child.hidden=true;}
