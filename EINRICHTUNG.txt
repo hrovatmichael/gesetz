@@ -1,0 +1,12 @@
+RECHTSMONITOR - GitHub/Cloudflare Pages
+
+1. ZIP entpacken und Inhalte in die WURZEL des Pages-GitHub-Repositories kopieren. Die API-Dateien müssen unter functions/api/... liegen; defaults.js unter functions/_lib/. Bestehende Dateien sichern.
+2. Cloudflare D1 Datenbank anlegen. Pages-Projekt > Settings > Bindings: D1 binding COLLECTIONS_DB an diese Datenbank binden (Production und Preview bei Bedarf).
+3. schema.sql auf D1 ausführen (z. B. im D1 SQL-Editor). Bestehende collections_state Daten bleiben erhalten (CREATE IF NOT EXISTS).
+4. Pages-Projekt > Settings > Variables and Secrets: ADMIN_BOOTSTRAP_TOKEN als Secret mit mindestens 32 zufälligen Zeichen hinterlegen. Neu deployen.
+5. ERSTMALIGEN Admin einmalig anlegen: auf der veröffentlichten Seite Browser-Konsole öffnen und folgendes mit EIGENEN Werten ausführen (Token nicht in GitHub eintragen):
+fetch('/api/auth/bootstrap',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:'admin',password:'EIN_EIGENES_LANGES_PASSWORT',token:'EIGENES_ADMIN_BOOTSTRAP_TOKEN'})}).then(async r=>console.log(r.status,await r.json()))
+6. Danach mit dem Menüpunkt Konto & Favoriten anmelden und Nutzer anlegen. ADMIN_BOOTSTRAP_TOKEN nach erfolgreicher Einrichtung aus Pages-Secrets entfernen und erneut deployen.
+7. Testen: zwei Nutzer anmelden, Favoriten voneinander getrennt; Admin kann Sammlungen ändern, Nutzer nicht; Nutzer deaktivieren und Zugriff prüfen.
+
+WICHTIG: ZIP enthält KEINE D1-Datenbank, Passwörter oder Cloudflare-Secrets. Bestehende Sammlungen bleiben bei Nutzung derselben D1 erhalten. Vergleichsstand für RIS bleibt weiterhin nur im jeweiligen Browser. Ohne echtes Pages-Projekt mit Functions funktionieren API und Anmeldung nicht.
