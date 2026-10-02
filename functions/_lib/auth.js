@@ -5,7 +5,7 @@ const hex=a=>Array.from(a,x=>x.toString(16).padStart(2,'0')).join('');
 const unhex=s=>new Uint8Array(s.match(/../g).map(x=>parseInt(x,16)));
 export const random=n=>hex(bytes(n));
 export async function sha(s){return hex(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s))))}
-export async function hashPassword(password,salt){const k=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveBits']);return hex(new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',salt:unhex(salt),iterations:210000,hash:'SHA-256'},k,256)))}
+export async function hashPassword(password,salt){const k=await crypto.subtle.importKey('raw',new TextEncoder().encode(password),'PBKDF2',false,['deriveBits']);return hex(new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',salt:unhex(salt),iterations:100000,hash:'SHA-256'},k,256)))}
 export async function verify(password,salt,expected){const actual=await hashPassword(password,salt);let diff=actual.length^expected.length;for(let i=0;i<Math.min(actual.length,expected.length);i++)diff|=actual.charCodeAt(i)^expected.charCodeAt(i);return diff===0}
 export function sameOrigin(request){const origin=request.headers.get('Origin');return !!origin&&origin===new URL(request.url).origin}
 export async function body(request){if(!(request.headers.get('content-type')||'').toLowerCase().includes('application/json'))throw Error('JSON erforderlich');const text=await request.text();if(text.length>160000)throw Error('Eingabe zu groß');return JSON.parse(text)}
