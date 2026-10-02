@@ -12,12 +12,15 @@ export async function onRequestPost({ request, env }) {
     return json({ error: 'D1-Binding fehlt' }, 503);
   }
 
+  let schritt = 'Token prüfen';
+
   try {
     if (!env.ADMIN_BOOTSTRAP_TOKEN ||
         env.ADMIN_BOOTSTRAP_TOKEN.length < 6) {
-      return json({ error: 'ADMIN_BOOTSTRAP_TOKEN fehlt' }, 503);
+      return json({ error: 'ADMIN_BOOTSTRAP_TOKEN fehlt oder ist zu kurz' }, 503);
     }
 
+    schritt = 'Eingabe prüfen';
     const x = await body(request);
 
     if (!usernameOk(x.username) ||
@@ -26,9 +29,11 @@ export async function onRequestPost({ request, env }) {
       return json({ error: 'Ungültige Angaben' }, 400);
     }
 
+    schritt = 'Passwort verarbeiten';
     const salt = random(16);
     const hash = await hashPassword(x.password, salt);
 
+    schritt = 'Admin in D1 speichern';
     const result = await db(env)
       .prepare(
         "INSERT INTO users(id, username, role, salt, password_hash) " +
@@ -41,8 +46,9 @@ export async function onRequestPost({ request, env }) {
     return result.meta.changes === 1
       ? json({ ok: true })
       : json({ error: 'Einrichtung bereits abgeschlossen' }, 409);
+
   } catch (e) {
     console.error('Admin-Bootstrap fehlgeschlagen:', e);
-    return json({ error: 'Admin-Einrichtung fehlgeschlagen' }, 503);
+    return json({ error: 'Admin-Einrichtung fehlgeschlagen', schritt }, 503);
   }
 }
