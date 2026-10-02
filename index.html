@@ -88,6 +88,7 @@ async function changesLoad(reset){if(changes.busy)return;let period=$('changesPe
 $('changesStart').addEventListener('click',()=>changesLoad(true));$('changesMore').addEventListener('click',()=>changesLoad(false));$('changesFilter').addEventListener('input',changesRender);$('changesExport').addEventListener('click',()=>{let lines=[['Einstufung','Titel','Begründung','Textsignal','Volltext gelesen','Kundmachung','RIS-Link'],...changesVisible().map(x=>[x.kind,x.title,x.reason,x.evidence,x.textChecked?'Ja':'Nein',x.date,safeUrl(x.url)])];let csv='\uFEFF'+lines.map(row=>row.map(v=>'"'+String(v??'').replaceAll('"','""')+'"').join(';')).join('\r\n');let url=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));let a=document.createElement('a');a.href=url;a.download='rechtsmonitor-aenderungen.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)});changesRender();
 </script>
 <script src="./prueffaelle-dropdown.js"></script>
+<script src="./gesetzessammlungen.js"></script>
 </body>
 </html>
 
