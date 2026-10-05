@@ -122,10 +122,21 @@
       const shortLabel=document.createElement('label');shortLabel.className='field';shortLabel.textContent='Abkürzung (optional)';
       const short=document.createElement('input');short.type='text';short.maxLength=40;short.placeholder='z. B. ASchG';shortLabel.append(short);form.append(shortLabel);
       const add=document.createElement('button');add.type='submit';add.className='btn alt';add.textContent='Vorschrift hinzufügen';form.append(add);
-      form.addEventListener('submit',async e=>{e.preventDefault();if(busy){editStatus('Bitte laufenden RIS-Abgleich abwarten.');return}
+      form.addEventListener('submit',async e=>{e.preventDefault();if(busy||saving){editStatus('Bitte laufenden Abgleich oder Speichervorgang abwarten.');return}
         const name=law.value.trim(),abbr=short.value.trim();if(!name)return;
+        if(!onlineReady){editStatus('Online-Speicher nicht bereit. Keine Vorschrift gespeichert.');return}
+        if(!window.rmUser||window.rmUser.role!=='admin'){editStatus('Nur Administratoren können Sammlungen ändern. Bitte anmelden.');return}
         if(groups[group].some(x=>normalize(x[0])===normalize(name))){editStatus('Diese Vorschrift ist in der Sammlung bereits enthalten.');return}
-        groups[group].push([name,abbr]);if(await persist()){renderGroups();editStatus('Vorschrift online hinzugefügt: '+name);}});
+        add.disabled=true;editStatus('Prüfe Vorschrift im RIS …');
+        try{
+          const valid=await validateLawInRIS(name,abbr);
+          if(!valid){editStatus('Kein eindeutiger RIS-Treffer. Die Vorschrift wurde nicht gespeichert.');return}
+          if(!groups[group]){editStatus('Sammlung nicht mehr vorhanden.');return}
+          if(groups[group].some(x=>normalize(x[0])===normalize(name))){editStatus('Diese Vorschrift ist in der Sammlung bereits enthalten.');return}
+          groups[group].push([name,abbr]);if(await persist()){renderGroups();editStatus('RIS-geprüfte Vorschrift online hinzugefügt: '+name);}
+        }catch(err){editStatus('RIS-Prüfung fehlgeschlagen; nichts gespeichert ('+String(err.message||err)+').');}
+        finally{add.disabled=false}
+      });
       section.append(form);
       const scroller=document.createElement('div');scroller.className='tablewrap';scroller.style.marginTop='14px';
       const table=document.createElement('table');table.className='table';
@@ -177,6 +188,15 @@
     const best=ranked.filter(x=>x.score===ranked[0].score);
     if(best.some(x=>normalize(x.title)!==normalize(best[0].title)))return {ambiguous:true};
     return {documents:best.map(x=>x.doc)};
+  }
+  async function validateLawInRIS(name,abbr=''){
+    const url=new URL(api);url.searchParams.set('Applikation','BrKons');url.searchParams.set('Titel',name);
+    url.searchParams.set('DokumenteProSeite','OneHundred');url.searchParams.set('Seitennummer','1');
+    const response=await fetch(url.toString(),{headers:{Accept:'application/json'}});
+    if(!response.ok)throw Error('RIS HTTP '+response.status);
+    const json=await response.json();if(json?.OgdSearchResult?.Error)throw Error('RIS-Suchfehler');
+    const match=choose(documentList(json),{name,abbr});
+    return !!match&&!match.ambiguous;
   }
   function display(entry,result){for(const c of cells.get(entry.id)||[]){
     c.state.textContent=result.state;c.date.textContent=result.date||'Nicht angegeben';
