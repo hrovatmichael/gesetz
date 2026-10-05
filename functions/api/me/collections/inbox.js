@@ -46,6 +46,7 @@ function documentsFrom(json) {
     json?.OgdSearchResult?.OgdDocumentResults?.OgdDocumentReference;
 
   if (!value) return [];
+
   return Array.isArray(value) ? value : [value];
 }
 
@@ -56,7 +57,9 @@ function lawNumberFrom(document) {
     ['Technisch', 'Gesetzesnummer']
   ]);
 
-  if (/^\d{8}$/.test(direct)) return direct;
+  if (/^\d{8}$/.test(direct)) {
+    return direct;
+  }
 
   const documentUrl = metadata(document, [
     ['Allgemein', 'DokumentUrl']
@@ -78,7 +81,9 @@ async function resolveInRis(title) {
   url.searchParams.set('Seitennummer', '1');
 
   const response = await fetch(url.toString(), {
-    headers: { Accept: 'application/json' }
+    headers: {
+      Accept: 'application/json'
+    }
   });
 
   if (!response.ok) {
@@ -105,17 +110,21 @@ async function resolveInRis(title) {
       ['Bundesrecht', 'Kurztitel']
     ]);
 
-    // Keine ungefähren Titelvergleiche: Ein Treffer muss exakt passen.
-    if (
-      normalize(risTitle) !== requestedTitle &&
-      normalize(shortTitle) !== requestedTitle
-    ) {
+    const exactTitleMatch =
+      normalize(risTitle) === requestedTitle;
+
+    const exactShortTitleMatch =
+      normalize(shortTitle) === requestedTitle;
+
+    if (!exactTitleMatch && !exactShortTitleMatch) {
       continue;
     }
 
     const risNumber = lawNumberFrom(document);
 
-    if (!risNumber) continue;
+    if (!risNumber) {
+      continue;
+    }
 
     const canonicalUrl = new URL(
       'https://www.ris.bka.gv.at/GeltendeFassung.wxe'
@@ -135,25 +144,31 @@ async function resolveInRis(title) {
       matches.set(risNumber, {
         id: risNumber,
         risNumber,
-        title: risTitle || title,
+        title: risTitle || shortTitle || title,
         risUrl: canonicalUrl.href
       });
     }
   }
 
-  if (matches.size !== 1) return null;
+  if (matches.size !== 1) {
+    return null;
+  }
 
   return [...matches.values()][0];
 }
 
 export async function onRequestPost({ request, env }) {
   if (!sameOrigin(request)) {
-    return respond({ error: 'Ungültiger Ursprung.' }, 403);
+    return respond({
+      error: 'Ungültiger Ursprung.'
+    }, 403);
   }
 
   const auth = await requireUser(request, env);
 
-  if (auth.error) return auth.error;
+  if (auth.error) {
+    return auth.error;
+  }
 
   if (!env.COLLECTIONS_DB) {
     return respond({
@@ -161,10 +176,17 @@ export async function onRequestPost({ request, env }) {
     }, 503);
   }
 
-  const contentType = request.headers.get('content-type') || '';
+  const contentType =
+    request.headers.get('content-type') || '';
 
-  if (!contentType.toLowerCase().includes('application/json')) {
-    return respond({ error: 'JSON erforderlich.' }, 415);
+  if (
+    !contentType
+      .toLowerCase()
+      .includes('application/json')
+  ) {
+    return respond({
+      error: 'JSON erforderlich.'
+    }, 415);
   }
 
   let input;
@@ -173,12 +195,16 @@ export async function onRequestPost({ request, env }) {
     const raw = await request.text();
 
     if (raw.length > 2000) {
-      return respond({ error: 'Eingabe zu groß.' }, 413);
+      return respond({
+        error: 'Eingabe zu groß.'
+      }, 413);
     }
 
     input = JSON.parse(raw);
   } catch {
-    return respond({ error: 'Ungültiges JSON.' }, 400);
+    return respond({
+      error: 'Ungültiges JSON.'
+    }, 400);
   }
 
   const title = input?.title;
@@ -199,10 +225,15 @@ export async function onRequestPost({ request, env }) {
   try {
     law = await resolveInRis(title);
   } catch (error) {
-    console.error('RIS-Prüfung beim Übernehmen:', error);
+    console.error(
+      'RIS-Prüfung beim Übernehmen:',
+      error
+    );
 
     return respond({
-      error: 'RIS konnte nicht geprüft werden. Nichts gespeichert.'
+      error:
+        'RIS konnte nicht geprüft werden. ' +
+        'Nichts wurde gespeichert.'
     }, 503);
   }
 
@@ -214,7 +245,13 @@ export async function onRequestPost({ request, env }) {
     }, 422);
   }
 
-  const userId = auth.me.id;
+  const userId = auth.me?.id;
+
+  if (!userId) {
+    return respond({
+      error: 'Benutzer konnte nicht ermittelt werden.'
+    }, 401);
+  }
 
   try {
     await env.COLLECTIONS_DB.batch([
@@ -243,7 +280,10 @@ export async function onRequestPost({ request, env }) {
           law_id
         )
         VALUES (?, ?)
-      `).bind(userId, law.id)
+      `).bind(
+        userId,
+        law.id
+      )
     ]);
 
     return respond({
@@ -254,10 +294,14 @@ export async function onRequestPost({ request, env }) {
       message: 'Vorschrift übernommen.'
     }, 201);
   } catch (error) {
-    console.error('Vorschrift im Eingangskorb speichern:', error);
+    console.error(
+      'Vorschrift im Eingangskorb speichern:',
+      error
+    );
 
     return respond({
-      error: 'Vorschrift konnte nicht gespeichert werden.'
+      error:
+        'Vorschrift konnte nicht gespeichert werden.'
     }, 503);
   }
 }
