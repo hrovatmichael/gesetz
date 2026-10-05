@@ -134,7 +134,26 @@ $('changesStart').addEventListener('click',()=>changesLoad(true));$('changesMore
       for(const law of group.laws||[]){const row=document.createElement('div');row.className='collectionEntry';const name=document.createElement('span');name.textContent=law.title||'Ohne Titel';row.append(name);
         const controls=document.createElement('div');controls.className='collectionControls';
         if(group.inbox){const select=document.createElement('select');select.setAttribute('aria-label','Ziel-Sammlung');for(const target of model.collections){const option=document.createElement('option');option.value=target.id;option.textContent=target.name;select.append(option)}controls.append(select);
-          const assign=makeButton('Zuordnen',()=>mutate('/assign','POST',{lawId:law.id,collectionId:select.value}));assign.disabled=!model.collections.length;controls.append(assign)}
+          const assign=makeButton('Zuordnen',()=>mutate('/assign','POST',{lawId:law.id,collectionId:select.value}));assign.disabled=!model.collections.length;controls.append(assign);
+
+const remove=makeButton(
+  'Entfernen',
+  ()=>{
+    if(confirm(
+      'Vorschrift wirklich entfernen?'
+    )){
+      mutate(
+        '/inbox/remove',
+        'POST',
+        {
+          lawId:law.id
+        }
+      );
+    }
+  }
+);
+
+controls.append(remove)}
         else controls.append(makeButton('Entfernen',()=>mutate('/unassign','POST',{lawId:law.id,collectionId:group.id})));
         row.append(controls);contents.append(row)}
       if(!group.inbox)contents.append(makeButton('Sammlung löschen',()=>{if(confirm('Sammlung wirklich löschen?'))mutate('/'+encodeURIComponent(group.id),'DELETE')}));
