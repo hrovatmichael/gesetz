@@ -133,27 +133,81 @@ $('changesStart').addEventListener('click',()=>changesLoad(true));$('changesMore
       const contents=document.createElement('div');contents.hidden=!folds[group.id];header.addEventListener('click',()=>{folds[group.id]=!folds[group.id];contents.hidden=!folds[group.id];header.setAttribute('aria-expanded',String(!!folds[group.id]));label.textContent=(folds[group.id]?'▾ ':'▸ ')+group.name});
       for(const law of group.laws||[]){const row=document.createElement('div');row.className='collectionEntry';const name=document.createElement('span');name.textContent=law.title||'Ohne Titel';row.append(name);
         const controls=document.createElement('div');controls.className='collectionControls';
-        if(group.inbox){const select=document.createElement('select');select.setAttribute('aria-label','Ziel-Sammlung');for(const target of model.collections){const option=document.createElement('option');option.value=target.id;option.textContent=target.name;select.append(option)}controls.append(select);
-          const assign=makeButton('Zuordnen',()=>mutate('/assign','POST',{lawId:law.id,collectionId:select.value}));assign.disabled=!model.collections.length;controls.append(assign)}
-          const remove = makeButton(
-  'Entfernen',
-  () => {
-    if(confirm(
-      'Vorschrift wirklich entfernen?'
-    )){
-      mutate(
-        '/inbox/remove',
+  if(group.inbox){
+
+  const select=document.createElement('select');
+
+  select.setAttribute(
+    'aria-label',
+    'Ziel-Sammlung'
+  );
+
+  for(const target of model.collections){
+
+    const option=
+      document.createElement('option');
+
+    option.value=target.id;
+    option.textContent=target.name;
+
+    select.append(option);
+  }
+
+  controls.append(select);
+
+  const assign=makeButton(
+    'Zuordnen',
+    ()=>mutate(
+      '/assign',
+      'POST',
+      {
+        lawId:law.id,
+        collectionId:select.value
+      }
+    )
+  );
+
+  assign.disabled=
+    !model.collections.length;
+
+  controls.append(assign);
+
+  const remove=makeButton(
+    'Entfernen',
+    ()=>{
+      if(confirm(
+        'Vorschrift wirklich entfernen?'
+      )){
+        mutate(
+          '/inbox/remove',
+          'POST',
+          {
+            lawId:law.id
+          }
+        );
+      }
+    }
+  );
+
+  controls.append(remove);
+
+}else{
+
+  controls.append(
+    makeButton(
+      'Entfernen',
+      ()=>mutate(
+        '/unassign',
         'POST',
         {
-          lawId: law.id
+          lawId:law.id,
+          collectionId:group.id
         }
-      );
-    }
-  }
-);
+      )
+    )
+  );
 
-controls.append(remove);
-        else controls.append(makeButton('Entfernen',()=>mutate('/unassign','POST',{lawId:law.id,collectionId:group.id})));
+}(makeButton('Entfernen',()=>mutate('/unassign','POST',{lawId:law.id,collectionId:group.id})));
         row.append(controls);contents.append(row)}
       if(!group.inbox)contents.append(makeButton('Sammlung löschen',()=>{if(confirm('Sammlung wirklich löschen?'))mutate('/'+encodeURIComponent(group.id),'DELETE')}));
       box.append(contents);host.append(box)}
