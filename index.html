@@ -121,15 +121,25 @@ border-color:#405564;}.dark .status,.dark .source{background:#233744;color:#d6e4
   background:#233744;
   color:#ffffff;
 }                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                }.collectionHint{font-size:11px;color:#9fb6c3;margin:9px 0}.dark 
- .collectionEntry{
+ .dark .collectionEntry{
   display:grid;
-  grid-template-columns:14px 1fr 190px;
+  grid-template-columns:
+    14px
+    minmax(0,1fr)
+    auto
+    190px;
+
   gap:14px;
 
   align-items:start;
 
   border-top:1px solid #435461;
   padding:14px 0;
+}
+  .collectionEntry span{
+min-width:0;
+word-break:break-word;
+line-height:1.5;
 }
 .collectionLawActions{
   display:flex;
@@ -673,7 +683,13 @@ String(law.title || 'Ohne Titel')
 .replace(/\s+/g,' ')
 .trim();
 row.append(name);
-                                       if(law.risUrl){
+
+const spacer =
+  document.createElement('div');
+
+row.append(spacer);
+
+if(law.risUrl){
 
   const link =
     document.createElement('a');
