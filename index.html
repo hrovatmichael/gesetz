@@ -833,9 +833,13 @@ actions.append(
 );
 
 contents.append(actions);
+
 }
-      box.append(contents);host.append(box)}
-  }
+
+box.append(contents);
+host.append(box);
+
+}
   el('personalCollectionForm').addEventListener('submit',async e=>{e.preventDefault();const name=el('personalCollectionName').value.trim();if(!name)return;await mutate('','POST',{name});el('personalCollectionName').value=''});
   menu.addEventListener('click',()=>{for(const child of wrap.children){if(child!==panel&&child.id&&/Panel$/.test(child.id))child.hidden=true}panel.hidden=false;for(const item of nav.querySelectorAll('.menuItem'))item.classList.toggle('active',item===menu);const title=document.querySelector('.top b');if(title)title.textContent='Meine Gesetzessammlungen';load();
 loadCollectionChanges();});
