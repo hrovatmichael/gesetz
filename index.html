@@ -91,8 +91,9 @@ display:block;
 }
 .collectionLawActions{
   display:flex;
-  flex-direction:column;
-  align-items:flex-end;
+  flex-direction:row;
+  align-items:center;
+  justify-content:flex-end;
   gap:8px;
 }
 
@@ -164,8 +165,10 @@ display:block;
   align-items:flex-end;
   gap:8px;
 }
-  .collectionControls .btn{
+ .collectionControls .btn,
+.collectionLawActions .btn{
   width:auto;
+  min-width:90px;
 }
 
 .collectionControls .open{
