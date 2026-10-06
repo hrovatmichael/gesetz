@@ -875,12 +875,67 @@ host.append(box);
     loadCollectionChanges();
   }
 );
-  nav.addEventListener('click',e=>{if(e.target.closest('.menuItem')!==menu)panel.hidden=true},true);
-  async function addFromResult(item,button){if(!item){message('RIS-Dokument nicht eindeutig zuordenbar.',true);return}button.disabled=true;button.textContent='Prüfe RIS …';try{
-      // Only document identity is submitted; the server must resolve and verify the parent law in RIS.
-      const result=await request('/inbox','POST',{source:item.app,documentId:item.documentId||null,documentUrl:item.url||null,title:item.title||null});
-      button.textContent='Im Eingangskorb';if(!panel.hidden)await load();
-    }catch(e){button.disabled=false;button.textContent='Zu Sammlungen';alert('Übernahme nicht möglich: '+String(e.message||e))}}
+ nav.addEventListener(
+  'click',
+  event=>{
+    if(
+      event.target.closest('.menuItem') !== menu
+    ){
+      panel.hidden = true;
+    }
+  },
+  true
+);
+
+async function addFromResult(item, button){
+
+  if(!item){
+    message(
+      'RIS-Dokument nicht eindeutig zuordenbar.',
+      true
+    );
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = 'Prüfe RIS …';
+
+  try{
+
+    await request(
+      '/inbox',
+      'POST',
+      {
+        source: item.app,
+        documentId: item.documentId || null,
+        documentUrl: item.url || null,
+        title: item.title || null
+      }
+    );
+
+    button.textContent =
+      'Im Eingangskorb';
+
+    if(!panel.hidden){
+      await load();
+    }
+
+  }catch(error){
+
+    button.disabled = false;
+
+    button.textContent =
+      'Zu Sammlungen';
+
+    alert(
+      'Übernahme nicht möglich: ' +
+      String(
+        error?.message ||
+        error
+      )
+    );
+  }
+}
   function action(item){const b=document.createElement('button');b.type='button';b.className='btn alt collectionAction';b.textContent='Zu Sammlungen';b.addEventListener('click',()=>addFromResult(item,b));return b}
   function decorate(body,items){if(!body)return;const trs=[...body.querySelectorAll('tr')].filter(tr=>tr.querySelectorAll('td').length>1);trs.forEach((tr,i)=>{if(tr.dataset.collectionDecorated)return;const item=items[i];if(!item)return;tr.dataset.collectionDecorated='1';const td=tr.querySelector('td.title')||tr.querySelectorAll('td')[1];if(td)td.append(document.createElement('br'),action(item))})}
   function sync(){try{decorate(el('rows'),visible());decorate(el('fulltextRows'),[...ftData.values()].sort((a,b)=>dateNumber(b.date)-dateNumber(a.date)));decorate(el('watchRows'),Object.values(wState.results).sort((a,b)=>dateNumber(b.date)-dateNumber(a.date)))}catch(e){console.warn('Sammlungsbuttons:',e)}}
