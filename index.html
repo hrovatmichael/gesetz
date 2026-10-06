@@ -632,7 +632,32 @@ RIS-geprüfte Vorschriften zuerst im Eingangskorb ablegen, dann Sammlungen zuord
   };
 }
   function makeButton(text,action){const b=document.createElement('button');b.type='button';b.className='btn alt';b.textContent=text;b.addEventListener('click',action);return b}
-  async function mutate(path,method,body){try{await request(path,method,body);await load()}catch(e){message(String(e.message||e),true)}}
+  async function mutate(path,method,body){
+
+  try{
+
+    await request(
+      path,
+      method,
+      body
+    );
+
+    await load();
+
+    document.dispatchEvent(
+      new CustomEvent(
+        'rm-collections-changed'
+      )
+    );
+
+  }catch(e){
+
+    message(
+      String(e.message||e),
+      true
+    );
+  }
+
   function render(){const host=el('personalCollectionGroups');host.replaceChildren();
     const sections=[{id:'inbox',name:'Noch keiner Sammlung zugewiesen',laws:model.inbox||[],inbox:true},...model.collections.map(c=>({...c,inbox:false}))];
     for(const group of sections){const box=document.createElement('section');box.className='panel';const t=group.inbox?{color:'gray',text:'Eingangskorb'}:traffic(group);
