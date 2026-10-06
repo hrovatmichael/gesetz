@@ -166,7 +166,7 @@ $('changesStart').addEventListener('click',()=>changesLoad(true));$('changesMore
       const count=document.createElement('span');count.className='collectionCount';count.textContent=(group.laws||[]).length+' Vorschriften · '+t.text;
       header.append(lamp,label,count);box.append(header);
       const contents=document.createElement('div');contents.hidden=!folds[group.id];header.addEventListener('click',()=>{folds[group.id]=!folds[group.id];contents.hidden=!folds[group.id];header.setAttribute('aria-expanded',String(!!folds[group.id]));label.textContent=(folds[group.id]?'▾ ':'▸ ')+group.name});
-      for(const law of group.laws||[]){const row=document.createElement('div');row.className='collectionEntry';const name=document.createElement('span');ame.textContent=
+      for(const law of group.laws||[]){const row=document.createElement('div');row.className='collectionEntry';const name=document.createElement('span');name.textContent=
 String(law.title || 'Ohne Titel')
 .replace(/<br\s*\/?>/gi,' ')
 .replace(/<\/br>/gi,' ')
