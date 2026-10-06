@@ -218,7 +218,138 @@ function ftRender(){let rows=[...ftData.values()].sort((a,b)=>dateNumber(b.date)
 async function ftFetch(source,page){let url=new URL(API);url.searchParams.set('Applikation',source.app);url.searchParams.set('Suchworte',ftQuery);url.searchParams.set('DokumenteProSeite','OneHundred');url.searchParams.set('Seitennummer',String(page));if(source.app==='BgblAuth'){url.searchParams.set('KundmachungPeriode',ftPeriod);url.searchParams.set('SortierungSortDirection','Descending');url.searchParams.set('SortierungSortedByColumn','Kundmachungsdatum')}else url.searchParams.set('ImRisSeit',ftPeriod);let response=await fetch(url.toString(),{headers:{Accept:'application/json'}});if(!response.ok)throw new Error('HTTP '+response.status);let json=await response.json();if(json?.OgdSearchResult?.Error)throw new Error(json.OgdSearchResult.Error.Message||'RIS-API-Fehler');return docList(json)}
 async function ftLoad(reset){if(ftBusy||busy)return;let sources=ftSelected();if(!sources.length){ftMessage('Bitte mindestens eine Quelle auswählen.','warn');return}let term=$('fulltextTerm').value.trim();if(!term){ftMessage('Bitte ein Stichwort eingeben.','warn');$('fulltextTerm').focus();return}if(reset){ftReset();ftQuery=term;ftPeriod=$('fulltextPeriod').value}else if(term!==ftQuery||$('fulltextPeriod').value!==ftPeriod){ftMessage('Stichwort oder Zeitraum wurde geändert. Bitte eine neue Suche starten.','warn');return}ftBusy=true;$('runFulltext').disabled=true;$('fulltextMore').disabled=true;ftRender();let loaded=0,added=0;for(let i=0;i<Number($('fulltextPages').value);i++){for(const source of sources){if(ftDone[source.app])continue;let page=ftNext[source.app];ftMessage('Durchsuche '+source.label+' · Seite '+page+' …');try{let docs=await ftFetch(source,page);loaded++;ftNext[source.app]++;for(const doc of docs){let row=ftRow(doc,source);if(!ftData.has(row.key)){ftData.set(row.key,row);added++}}if(docs.length<100)ftDone[source.app]=true;ftRender()}catch(error){ftErrors[source.app]=String(error.message||error);ftDone[source.app]=true;ftMessage('Fehler bei '+source.label+': '+ftErrors[source.app]+'; übrige Quellen werden fortgesetzt.','error')}}if(sources.every(s=>ftDone[s.app]))break}ftBusy=false;$('runFulltext').disabled=false;$('fulltextMore').disabled=false;ftRender();let failed=Object.keys(ftErrors);ftMessage('Suche abgeschlossen: '+added+' neue Treffer, '+loaded+' Suchseiten geladen.'+(failed.length?' Fehler: '+failed.map(k=>k+' ('+ftErrors[k]+')').join(', ')+'.':'')+' Treffer sind RIS-Suchergebnisse; Fundstellen bitte im Original prüfen.',failed.length?'warn':'')}
 $('runFulltext').addEventListener('click',()=>ftLoad(true));$('fulltextMore').addEventListener('click',()=>ftLoad(false));$('fulltextTerm').addEventListener('keydown',event=>{if(event.key==='Enter')ftLoad(true)});ftReset();ftRender();
+async function loadMyChanges(){
 
+  const host =
+    document.getElementById(
+      'myChangesResults'
+    );
+
+  const status =
+    document.getElementById(
+      'myChangesStatus'
+    );
+
+  if(!host || !status){
+    return;
+  }
+
+  status.textContent =
+    'Änderungen werden geladen ...';
+
+  try{
+
+    const response =
+      await fetch('/api/me/changes');
+
+    if(!response.ok){
+      throw new Error(
+        'HTTP ' + response.status
+      );
+    }
+
+    const data =
+      await response.json();
+
+    host.replaceChildren();
+
+    if(
+      !data.changes ||
+      !data.changes.length
+    ){
+      status.textContent =
+        'Noch keine erkannten Änderungen.';
+      return;
+    }
+
+    status.textContent =
+      data.summary.changeItems +
+      ' Änderungen gefunden.';
+
+    for(
+      const change
+      of data.changes
+    ){
+
+      const box =
+        document.createElement('div');
+
+      box.className =
+        'myChange';
+
+      let list = '';
+
+      for(
+        const item
+        of change.items
+      ){
+
+        let cls =
+          'changeModified';
+
+        let icon =
+          '✏';
+
+        if(item.type==='added'){
+          cls='changeAdded';
+          icon='➕';
+        }
+
+        if(item.type==='removed'){
+          cls='changeRemoved';
+          icon='➖';
+        }
+
+        list += `
+          <div class="${cls}">
+            ${icon}
+            ${item.provisionKey}
+          </div>
+        `;
+      }
+
+      box.innerHTML = `
+        <div class="myChangeTitle">
+          🔴 ${change.title}
+        </div>
+
+        <div class="myChangeMeta">
+          Sammlung:
+          ${change.collectionName}
+        </div>
+
+        <div class="myChangeMeta">
+          Erkannt:
+          ${new Date(
+            change.detectedAt
+          ).toLocaleString('de-AT')}
+        </div>
+
+        <div class="myChangeItems">
+          ${list}
+        </div>
+      `;
+
+      host.append(box);
+    }
+
+  }catch(error){
+
+    status.textContent =
+      'Änderungen konnten nicht geladen werden.';
+
+    console.error(error);
+  }
+}
+
+document
+  .getElementById(
+    'reloadMyChanges'
+  )
+  ?.addEventListener(
+    'click',
+    loadMyChanges
+  );
 // TVZ monitor: individual RIS full-text requests, deduplicated per source/document.
 const TVZ_DEFAULT="ASchG\nArbeitnehmerInnenschutzgesetz\nArbeitnehmerschutz\nArbeitsschutz\nArbeitsinspektion\nArbeitsinspektionsgesetz\nArbIG\nArbeitsunfall\nBeinaheunfall\nPrävention\nPräventionszeit\nGesundheitsschutz\nArbeitssicherheit\nSicherheit und Gesundheitsschutz\nSicherheitsfachkraft\nSicherheitsfachkräfte\nSFK\nSFK-VO\nSicherheitsvertrauensperson\nSicherheitsvertrauenspersonen\nSVP\nPräventivdienst\nDOK-VO\nSicherheitsdokument\nSicherheits- und Gesundheitsschutzdokument\nSicherheits- und Gesundheitsdokumente\nEvaluierung\nGefahrenevaluierung\nGefährdungsbeurteilung\nRisikobeurteilung\nGefährdungsanalyse\nRisikobewertung\nKennV\nKennzeichnungsverordnung\nSicherheitskennzeichnung\nGesundheitsschutzkennzeichnung\nWarnzeichen\nGebotszeichen\nVerbotszeichen\nRettungszeichen\nBrandschutzzeichen\nAMZ-VO\nArbeitsmedizinische Zentren\nArbeitsmedizinisches Zentrum\nArbeitsmedizin\nBetriebsarzt\nBetriebsärztlich\nVGÜ\nVGÜ 2017\nVerordnung Gesundheitsüberwachung\nGesundheitsüberwachung\nEignungsuntersuchung\nVorsorgeuntersuchung\nAStV\nArbeitsstättenverordnung\nArbeitsstätte\nArbeitsstätten\nArbeitsplatz\nArbeitsplätze\nFluchtweg\nRettungsweg\nNotausgang\nVerkehrsweg\nPausenraum\nSozialraum\nSanitärraum\nToilette\nWaschraum\nUmkleideraum\nBelüftung\nLüftung\nRaumtemperatur\nBeleuchtung\nAM-VO\nArbeitsmittelverordnung\nArbeitsmittel\nArbeitsmittelprüfung\nPrüfung Arbeitsmittel\nMaschine\nMaschinen\nHebebühne\nHubarbeitsbühne\nKran\nKräne\nKranführer\nKranprüfung\nKranbetrieb\nPortalkran\nBrückenkran\nHallenkran\nHebezeug\nHebezeuge\nLastaufnahmemittel\nAnschlagmittel\nAnschläger\nStapler\nGabelstapler\nFlurförderzeug\nAAV\nAllgemeine Arbeitnehmerschutzverordnung\nFK-V\nFachkenntnisnachweis\nFachkenntnisnachweis-Verordnung\nFachkenntnis\nStaplerschein\nKranschein\nESV\nESV 2012\nElektroschutzverordnung\nElektrosicherheit\nElektrische Anlage\nElektrische Anlagen\nElektrische Betriebsmittel\nElektroprüfung\nBS-V\nBildschirmarbeitsverordnung\nBildschirmarbeit\nBildschirmarbeitsplatz\nErgonomie\nVbA\nBiologische Arbeitsstoffe\nBiostoffe\nBakterien\nViren\nSchimmel\nGKV\nGrenzwerteverordnung\nGrenzwert\nGefahrstoff\nGefahrstoffe\nArbeitsstoff\nArbeitsstoffe\nCMR\nSicherheitsdatenblatt\nChemikalie\nChemikalien\nLösemittel\nVEXAT\nExplosionsschutz\nExplosionsfähige Atmosphäre\nATEX\nEX-Schutz\nEx-Zone\nVOLV\nLärm\nLärmschutz\nVibration\nVibrationen\nErschütterung\nVOPST\nOptische Strahlung\nLaser\nUV-Strahlung\nVEMF\nElektromagnetische Felder\nEMF\nPSA\nPSA-V\nPersönliche Schutzausrüstung\nSchutzhelm\nSchutzbrille\nSchutzhandschuh\nSicherheitsschuh\nGehörschutz\nEisbAV\nEisenbahn-ArbeitnehmerInnenschutzverordnung\nAVO Verkehr\nAVO Verkehr 2017\nArbeitnehmerInnenschutzverordnung Verkehr\nAPLV\nAerosolpackungslagerungsverordnung\nAerosolpackung\nAerosolpackungen\nVerordnung über brennbare Flüssigkeiten\nBrennbare Flüssigkeiten\nLagerung brennbarer Flüssigkeiten\nArbeitszeitgesetz\nAZG\nArbeitszeit\nÜberstunden\nMehrarbeit\nNachtarbeit\nSchichtarbeit\nRuhezeit\nLenkzeit\nARG\nArbeitsruhegesetz\nArbeitsruhegesetz-Verordnung\nARG-VO\nWochenendruhe\nFeiertagsruhe\nArbeitsruhe\nFahrtenschreiber\nStraßenverkehr\nLenk- und Ruhezeiten\nVerordnung EU 165/2014\nMSchG\nMutterschutzgesetz\nMutterschutz\nSchwangere\nKJBG\nKinder- und Jugendlichen-Beschäftigungsgesetz\nKJBG-VO\nJugendliche\nJugendarbeit\nLehrling\nLehrlinge\nBeschäftigungsverbot Jugendliche\nBEinstG\nBehinderteneinstellungsgesetz\nBegünstigt Behinderte\nPyrotechnikgesetz\nPyroTG\nPyroTG 2010\nPyrotechnik\nPyrotechnik-Lagerverordnung\nAWG\nAWG 2002\nAbfallwirtschaftsgesetz\nAbfallwirtschaft\nNachhaltige Abfallwirtschaft\nAbfall\nAbfälle\nEntsorgung\nGefährlicher Abfall\nAltöl\nAltreifen\nÖlabscheider\nAbwasser\nVerpackungsverordnung\nVerpackung\nVerpackungsabfall\nVerpackungsabfälle\nRecycling\nWarenreste\nAbfallBPV\nAbfallbehandlung\nAbfallbehandlungspflichten\nADR\nADN\nADN-Verordnung\nADN 2023\nIMDG\nIATA\nGefahrgut\nGefahrguttransport\nGefahrgutbeförderung\nGefahrgutbeauftragter\nUN-Nummer\nGefahrzettel\nBeförderungspapier\nTunnelbeschränkung\nMultilaterale Sondervereinbarung ADR\nGeltungsbereich ADR\nGeltungsbereich ADN\nWerkstatt\nWerkstätte\nWerkstätten\nKFZ\nKraftfahrzeug\nFahrzeug\nFahrzeuge\nPrüfstraße\nDiagnose\nFahrzeugtechnik\nHochvolt\nHochvoltsystem\nHV-System\nElektrofahrzeug\nE-Fahrzeug\nLithiumbatterie\nLithium-Ionen-Batterie\nTraktionsbatterie\nHochvoltbatterie\nBatterie\nBatteriespeicher\nLadestation\nLadeeinrichtung\nWallbox\nLadeinfrastruktur\nLadekabel\nBrandschutz\nBrandschutzordnung\nBrandschutzbeauftragter\nBrandmeldeanlage\nBrandabschnitt\nBrandlast\nRauchabzug\nEvakuierung\nEvakuierungsplan\nFeuerlöscher\nLöschmittel\nFeuerwehr\nBetriebsbewilligung\nBetriebsbewilligungsverordnung\nArbeitsverfassungsgesetz\nArbeitsvertragsrechts-Anpassungsgesetz\nLandarbeitsgesetz\nUnterweisung\nBetriebsanweisung\nUnterweisungsnachweis\nErsthelfer\nErste Hilfe\nNotfallplan\nArbeitsfreigabe\nCompliance\nArbeitsplatzevaluierung\nEvaluierungsdokument\nEvaluierungspflicht\nGefahrenanalyse\nGefahrenbewertung\nGefahrenbeurteilung\nRisikomanagement\nRisikominimierung\nPräventionszentrum\nArbeitsinspektorat\nArbeitsinspektor\nArbeitsaufsicht\nSicherheitsunterweisung\nGefahrstoffunterweisung\nErlaubnisschein\nFreigabeschein\nSanitätsraum\nVerbandkasten\nArbeitsmedizinische Betreuung\nBerufskrankheit\nBerufserkrankung\nArbeitsplatzausstattung\nArbeitsplatzgestaltung\nErgonomischer Arbeitsplatz\nHandhabung von Lasten\nLastenhandhabung\nManuelle Lastenhandhabung\nHubwagen\nAmeise\nKommissionierer\nRegal\nRegalanlage\nRegalprüfung\nRegalinspektion\nLager\nLagerung\nLagerbereich\nGefahrstofflager\nGefahrgutlager\nBatterielager\nBrandmeldezentrale\nBrandmelder\nBrandschutzwart\nRauchmelder\nAlarmplan\nLöschanlage\nSprinkleranlage\nExplosionsdokument\nExplosionsschutzdokument\nZone 0\nZone 1\nZone 2\nZone 20\nZone 21\nZone 22\nATEX-Richtlinie\nChemikalienrecht\nChemikaliengesetz\nREACH\nCLP\nH-Satz\nP-Satz\nGefahrenpiktogramm\nGefahrensymbol\nKennzeichnungspflicht\nBetriebsanweisung Gefahrstoffe\nAbsaugung\nAbsauganlage\nFeinstaub\nDieselabgas\nAbgasabsaugung\nSchweißrauch\nSchweißarbeitsplatz\nLärmexposition\nLärmbelastung\nHand-Arm-Vibration\nGanzkörpervibration\nLaserklasse\nLaserstrahlung\nUV-Belastung\nAbfallsammlung\nAbfalltrennung\nAltbatterie\nAltakku\nElektroschrott\nAltfahrzeug\nVerwertung\nWiederverwendung\nProblemstoff\nAbfallschlüsselnummer\nAltölverordnung\nUmweltmanagement\nADR-Schein\nUN Nummer\nUN-Code\nTunnelcode\nVerpackungsgruppe\nLithiumzelle\nLithium-Ionen-Zelle\nGefahrgutkennzeichnung\nHochvolttechnik\nHochvolt-Ausbildung\nHV-Fahrzeug\nHV-Komponente\nHochvolt-Komponente\nFreischalten Hochvolt\nHochvoltfreigabe\nEnergiespeicher\nTraktionsakku\nLadepark\nSchnellladestation\nDC-Laden\nAC-Laden\nLadepunkt\nKFZ-Technik\nKraftfahrzeugtechnik\nDiagnosegerät\nDiagnosetester\nBremsenprüfstand\nRollenprüfstand\nAbgasuntersuchung\nPickerl\nBegutachtung\nHebeanlage\nHubtisch\nWerkstattausrüstung\nWerkstättenausrüstung\nLastaufnahme\nLastenaufnahme\nKettengehänge\nHebeband\nRundschlinge\nLastkette\nKranschiene\nBrückenlaufkran\nPortalkrananlage\nKranbahn\nAnschlagpunkt\nKranführerprüfung\nStaplerfahrer\nStaplerausbildung\nFührerschein Stapler\nFlurförderzeuge\nHydraulik\nDruckluftanlage\nDruckbehälter\nKesselanlage\nKompressor\nBetriebsgenehmigung\nBetriebsanlage\nBetriebsanlagenrecht\nGenehmigungspflicht\nVerfahrensvorschrift\nBehördliche Auflage\nAuflagenbescheid\nArbeitgeberpflicht\nArbeitnehmerpflicht\nSchutzmaßnahme\nTechnische Schutzmaßnahme\nOrganisatorische Maßnahme\nPersönliche Schutzmaßnahme\nAudits\nSicherheitsaudit\nInterne Revision\nBehördenprüfung\nBehördenkontrolle\nTransportzug\nSchlepper\nRoutenzug\nMilkrun\nVerladezone\nLadungssicherung\nDSGVO\nDatenschutzgesetz\nDSG\nNIS2\nInformationssicherheit\nCybersecurity\nCyber-Sicherheit\nISMS\nKRITIS\nESG\nCSRD\nESRS\nNachhaltigkeitsbericht\nKlimaschutz\nCO2\nEmissionshandel\nBaurecht\nBauordnung\nArbeitsstättenbewilligung\nBetriebsanlagenverfahren\nTeilevertriebszentrum\nTeilevertrieb\nErsatzteilvertrieb\nErsatzteillogistik\nErsatzteillager\nErsatzteilversorgung\nTeilelager\nTeilelogistik\nLagerlogistik\nLogistikzentrum\nLogistikbetrieb\nDistributionszentrum\nWareneingang\nWarenausgang\nWarenannahme\nWarenausgabe\nWarenumschlag\nWarenbereitstellung\nWareneingangskontrolle\nWarenausgangskontrolle\nKommissionierung\nKommissionierbereich\nKommissionierplatz\nKommissionierfahrzeug\nKommissioniergerät\nPackplatz\nPackstation\nVerpackungsplatz\nVerpackungsanlage\nVerpackungsmaschine\nVersandabwicklung\nVersandbereich\nVersandlager\nVersandstück\nFrachtgut\nStückgut\nTransportgut\nGütertransport\nGüterbeförderung\nFrachtbrief\nCMR-Frachtbrief\nSpedition\nSpeditionsbetrieb\nTransportdienstleister\nTransportauftrag\nTransportplanung\nFuhrpark\nFuhrparkmanagement\nDienstfahrzeug\nTransportfahrzeug\nNutzfahrzeug\nLastkraftwagen\nLkw\nAnhänger\nSattelauflieger\nWechselbrücke\nLadefläche\nLadebordwand\nLaderampe\nVerladerampe\nLaderampe Sicherheit\nLadebrücke\nÜberladebrücke\nDockingstation\nVerladebereich\nVerladeeinrichtung\nVerladevorgang\nLadegut\nLadeeinheit\nLadehilfsmittel\nLadungsträger\nLadungssicherungsmittel\nZurrgurt\nZurrmittel\nZurrpunkt\nZurrkraft\nAntirutschmatte\nKantenschutz\nSperrbalken\nSperrstange\nStaupolster\nVerpackungssicherung\nTransportsicherung\nTransportschaden\nTransportverpackung\nTransportbehälter\nMehrwegbehälter\nEinwegbehälter\nMehrwegverpackung\nEinwegverpackung\nKunststoffverpackung\nPapierverpackung\nHolzverpackung\nMetallverpackung\nPalettenverpackung\nTransportpalette\nEuropalette\nIndustriepalette\nHolzpalette\nKunststoffpalette\nGitterbox\nGitterboxpalette\nIBC\nGroßpackmittel\nGroßverpackung\nKleinverpackung\nUmverpackung\nAußenverpackung\nInnenverpackung\nVerpackungskennzeichen\nUN-Verpackung\nUN-Zulassung\nVerpackungsanweisung\nVerpackungsprüfung\nVerpackungszertifikat\nStapelprüfung\nStapellast\nStapelhöhe\nStapelfähigkeit\nFasslagerung\nFassstapelung\nFasshandling\nFassgreifer\nFasspumpe\nFassregal\nFasspalette\nStahlfass\nKunststofffass\nÖlfass\nÖllagerung\nSchmierstofflagerung\nSchmierstoff\nSchmieröl\nMotoröl\nGetriebeöl\nHydrauliköl\nBremsflüssigkeit\nKühlmittel\nFrostschutzmittel\nScheibenreiniger\nScheibenwaschflüssigkeit\nReinigungsmittel\nDesinfektionsmittel\nSpraydose\nAerosolbehälter\nDruckgaspackung\nDruckgasflasche\nGasflaschenlager\nGasflaschenlagerung\nGasflaschentransport\nGaskartusche\nKältemittel\nKältemittellagerung\nAdBlue\nHarnstofflösung\nKraftstofflagerung\nDiesellagerung\nBenzinlagerung\nGefahrstoffbehälter\nGefahrstoffschrank\nSicherheitsschrank\nChemikalienschrank\nSicherheitsauffangwanne\nAuffangwanne\nRückhaltewanne\nLeckagewanne\nRückhaltevolumen\nLeckage\nLeckageerkennung\nLeckagebeseitigung\nÖlbindemittel\nBindemittel\nGewässerschutz\nWassergefährdung\nBodenverunreinigung\nBodenversiegelung\nGrundwasserschutz\nLöschwasserrückhaltung\nLöschwasser\nLöschwassersammelstelle\nWasserrecht\nWasserrechtsgesetz\nAbwasserentsorgung\nIndirekteinleitung\nKanalanschluss\nGefahrstoffverzeichnis\nStoffverzeichnis\nGefahrstoffkataster\nLagerverzeichnis\nLagerkonzept\nLagerordnung\nLagerklasse\nZusammenlagerung\nGetrenntlagerung\nLagerabschnitt\nLagermenge\nLagervolumen\nLagertemperatur\nLagerbedingungen\nLagerbewilligung\nLagergenehmigung\nBetriebsanlagengenehmigung\nGenehmigungsbescheid\nBescheidauflage\nBetriebsanlagenänderung\nÄnderungsgenehmigung\nAnzeigeverfahren\nGefahrenabwehr\nNotfallmanagement\nNotfallorganisation\nAlarmorganisation\nBrandalarm\nFeueralarm\nRäumungsalarm\nRäumungsübung\nEvakuierungsübung\nBrandschutzübung\nBrandschutzkonzept\nBrandschutzplan\nFeuerwehrplan\nFluchtwegplan\nRettungsplan\nBrandschutzklappe\nBrandschutztür\nBrandschutzwand\nFeuerschutzabschluss\nBrandabschottung\nBrandmelderzentrale\nSprinklerprüfung\nLöschanlagenprüfung\nFeuerlöscherprüfung\nRauchwärmeabzug\nRauch- und Wärmeabzug\nRauchfreihaltung\nBrandfrüherkennung\nWärmemelder\nHandfeuermelder\nBrandmeldeanlage Prüfung\nBatteriebrand\nLithiumbrand\nThermal Runaway\nThermisches Durchgehen\nBatteriesicherheit\nBatterieverordnung\nEU-Batterieverordnung\nBatterierecycling\nBatterierücknahme\nBatterietransport\nBatterieversand\nBatterieverpackung\nBatteriekennzeichnung\nBatterieentsorgung\nBeschädigte Batterie\nDefekte Batterie\nKritische Batterie\nLithium-Metall-Batterie\nLithium-Ionen-Akku\nLithium-Polymer-Akku\nBatteriemodul\nBatteriepack\nBatteriesystem\nBatteriemanagementsystem\nBMS\nLadegerät\nLadegerätprüfung\nLadeplatz\nLadebereich\nLadekonzept\nLadesäule\nLadesäulenprüfung\nLadeinfrastruktur Sicherheit\nHochvoltprüfung\nHochvoltschulung\nHochvoltqualifikation\nHochvoltbefähigung\nElektrofachkraft\nElektrotechnisch unterwiesene Person\nSpannungsfreischaltung\nSpannungsfreiheit\nWiedereinschalten\nFreischaltverfahren\nArbeiten unter Spannung\nElektrische Gefährdung\nStörlichtbogen\nLichtbogenschutz\nIsolationsprüfung\nIsolationsmessung\nErdung\nPotentialausgleich\nFehlerstromschutzschalter\nFI-Schutzschalter\nElektroinstallation\nElektroinstallation Prüfung\nE-Check\nWiederkehrende Prüfung\nPrüfintervall\nPrüfbefund\nPrüfprotokoll\nPrüfnachweis\nSachverständigenprüfung\nSachkundigenprüfung\nBefähigte Person";
 let wState={index:0,sourceIndex:0,page:1,results:{},errors:[],terms:[],signature:''},wRunning=false,wStop=false;
