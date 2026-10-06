@@ -841,8 +841,40 @@ host.append(box);
 
 }
   el('personalCollectionForm').addEventListener('submit',async e=>{e.preventDefault();const name=el('personalCollectionName').value.trim();if(!name)return;await mutate('','POST',{name});el('personalCollectionName').value=''});
-  menu.addEventListener('click',()=>{for(const child of wrap.children){if(child!==panel&&child.id&&/Panel$/.test(child.id))child.hidden=true}panel.hidden=false;for(const item of nav.querySelectorAll('.menuItem'))item.classList.toggle('active',item===menu);const title=document.querySelector('.top b');if(title)title.textContent='Meine Gesetzessammlungen';load();
-loadCollectionChanges();});
+  menu.addEventListener('click',()=>menu.addEventListener(
+  'click',
+  ()=>{
+    for(const child of wrap.children){
+      if(
+        child !== panel &&
+        child.id &&
+        /Panel$/.test(child.id)
+      ){
+        child.hidden = true;
+      }
+    }
+
+    panel.hidden = false;
+
+    for(const item of nav.querySelectorAll('.menuItem')){
+      item.classList.toggle(
+        'active',
+        item === menu
+      );
+    }
+
+    const title =
+      document.querySelector('.top b');
+
+    if(title){
+      title.textContent =
+        'Meine Gesetzessammlungen';
+    }
+
+    load();
+    loadCollectionChanges();
+  }
+);
   nav.addEventListener('click',e=>{if(e.target.closest('.menuItem')!==menu)panel.hidden=true},true);
   async function addFromResult(item,button){if(!item){message('RIS-Dokument nicht eindeutig zuordenbar.',true);return}button.disabled=true;button.textContent='Prüfe RIS …';try{
       // Only document identity is submitted; the server must resolve and verify the parent law in RIS.
