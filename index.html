@@ -133,7 +133,7 @@ display:block;
 
   gap:14px;
 
-  align-items:start;
+  align-items:center;
 
   border-top:1px solid #435461;
   padding:14px 0;
@@ -141,10 +141,12 @@ display:block;
 
 
   .collectionEntry span{
-min-width:0;
-word-break:break-word;
-line-height:1.5;
+  min-width:0;
+  word-break:break-word;
+  line-height:1.5;
+  text-align:left;
 }
+
 .collectionLawActions{
   display:flex;
   flex-direction:column;
@@ -697,7 +699,9 @@ const center =
 
 center.style.display = 'flex';
 center.style.flexDirection = 'column';
-center.style.gap = '4px';
+center.style.alignItems = 'flex-start';
+center.style.justifyContent = 'flex-start';
+center.style.width = '100%';
 
 center.append(name);
 
