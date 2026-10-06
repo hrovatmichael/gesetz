@@ -73,23 +73,29 @@ border-color:#405564;}.dark .status,.dark .source{background:#233744;color:#d6e4
   color:#ffffff;
 }                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                }.collectionHint{font-size:11px;color:#9fb6c3;margin:9px 0}.dark 
   .collectionEntry{display:grid;
-grid-template-columns:14px 1fr auto;
+grid-template-columns:14px 1fr 140px;
 gap:14px;
 align-items:start;
  
 border-top:1px solid #435461;
  
 padding:14px 0;border-color:#435461}
-.collectionEntry .open{
-  display:block;
-  margin-top:4px;
+.collectionLawActions{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  gap:8px;
+}
 
+.collectionLawActions .open{
   color:#8dd7f0;
-
   font-size:11px;
   font-weight:700;
-
   text-decoration:none;
+}
+
+.collectionLawActions .open:hover{
+  text-decoration:underline;
 }
 
 .collectionEntry .open:hover{
@@ -343,7 +349,28 @@ const remove=makeButton(
 );
 
 controls.append(remove)}
-        else controls.append(makeButton('Entfernen',()=>mutate('/unassign','POST',{lawId:law.id,collectionId:group.id})));
+       else{
+
+  const remove =
+    makeButton(
+      'Entfernen',
+      ()=>mutate(
+        '/unassign',
+        'POST',
+        {
+          lawId:law.id,
+          collectionId:group.id
+        }
+      )
+    );
+
+  controls.classList.add(
+    'collectionLawActions'
+  );
+
+  controls.append(remove);
+
+}
         row.append(controls);contents.append(row)}
       if(!group.inbox){
 
