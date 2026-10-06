@@ -795,6 +795,7 @@ controls.append(remove)}
 
 }
         row.append(controls);contents.append(row)
+                                       }
       if(!group.inbox){
 
   const actions =
@@ -838,7 +839,7 @@ contents.append(actions);
 
 box.append(contents);
 host.append(box);
-
+}
 }
   el('personalCollectionForm').addEventListener('submit',async e=>{e.preventDefault();const name=el('personalCollectionName').value.trim();if(!name)return;await mutate('','POST',{name});el('personalCollectionName').value=''});
  menu.addEventListener('click',()=>{
