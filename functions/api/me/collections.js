@@ -6,6 +6,10 @@ export async function onRequestGet({ request, env }) {
   const auth = await requireUser(request, env);
   if (auth.error) return auth.error;
 
+  if (!env.COLLECTIONS_DB) {
+    return json({ error: 'D1-Binding COLLECTIONS_DB fehlt.' }, 503);
+  }
+
   const userId = auth.me.id;
 
   try {
@@ -30,8 +34,8 @@ export async function onRequestGet({ request, env }) {
         l.title,
         l.ris_number,
         l.ris_url,
-        l.last_checked_at,
-        l.check_status,
+        latest.checked_at,
+        latest.status AS history_status,
         l.amendment_date
       FROM personal_collection_laws AS pcl
       JOIN personal_collections AS c
@@ -39,6 +43,16 @@ export async function onRequestGet({ request, env }) {
        AND c.user_id = pcl.user_id
       JOIN ris_laws AS l
         ON l.id = pcl.law_id
+      LEFT JOIN personal_law_checks AS latest
+        ON latest.id = (
+          SELECT plc.id
+          FROM personal_law_checks AS plc
+          WHERE plc.user_id = pcl.user_id
+            AND plc.collection_id = pcl.collection_id
+            AND plc.law_id = pcl.law_id
+          ORDER BY plc.id DESC
+          LIMIT 1
+        )
       WHERE pcl.user_id = ?
       ORDER BY l.title COLLATE NOCASE
     `).bind(userId).all();
@@ -70,38 +84,86 @@ export async function onRequestGet({ request, env }) {
       name: row.name,
       createdAt: row.created_at,
       isExpanded: row.is_expanded === 1,
+      checkStatus: 'pending',
+      checkedAt: null,
+      changedCount: 0,
+      errorCount: 0,
       laws: []
     }));
 
-    const byId = new Map(collections.map(collection => [
-      collection.id,
-      collection
-    ]));
+    const byId = new Map(
+      collections.map(collection => [collection.id, collection])
+    );
 
-    function formatLaw(row) {
+    function statusForFrontend(status) {
+      if (status === 'baseline' || status === 'unchanged') return 'complete';
+      if (status === 'changed') return 'changed';
+      if (status === 'error') return 'error';
+      return 'pending';
+    }
+
+    function formatCollectionLaw(row) {
+      return {
+        id: row.id,
+        title: row.title,
+        risNumber: row.ris_number,
+        risUrl: row.ris_url,
+        checkedAt: row.checked_at,
+        checkStatus: statusForFrontend(row.history_status),
+        historyStatus: row.history_status || null,
+        amendmentDate: row.amendment_date
+      };
+    }
+
+    function formatInboxLaw(row) {
       return {
         id: row.id,
         title: row.title,
         risNumber: row.ris_number,
         risUrl: row.ris_url,
         checkedAt: row.last_checked_at,
-        checkStatus: row.check_status,
+        checkStatus: row.check_status || 'pending',
         amendmentDate: row.amendment_date
       };
     }
 
     for (const row of lawsResult.results || []) {
       const collection = byId.get(row.collection_id);
-      if (collection) collection.laws.push(formatLaw(row));
+      if (!collection) continue;
+
+      const law = formatCollectionLaw(row);
+      collection.laws.push(law);
+
+      if (law.checkedAt && (!collection.checkedAt || law.checkedAt > collection.checkedAt)) {
+        collection.checkedAt = law.checkedAt;
+      }
+      if (law.historyStatus === 'changed') collection.changedCount++;
+      if (law.historyStatus === 'error') collection.errorCount++;
+    }
+
+    for (const collection of collections) {
+      if (!collection.laws.length) {
+        collection.checkStatus = 'empty';
+      } else if (collection.errorCount > 0) {
+        collection.checkStatus = 'error';
+      } else if (collection.changedCount > 0) {
+        collection.checkStatus = 'changed';
+      } else if (collection.laws.some(law => !law.checkedAt || law.checkStatus === 'pending')) {
+        collection.checkStatus = 'pending';
+      } else {
+        collection.checkStatus = 'complete';
+      }
     }
 
     return json({
       collections,
-      inbox: (inboxResult.results || []).map(formatLaw)
+      inbox: (inboxResult.results || []).map(formatInboxLaw)
     });
   } catch (error) {
     console.error('Persönliche Sammlungen laden:', error);
-    return json({ error: 'Persönliche Sammlungen konnten nicht geladen werden.' }, 503);
+    return json({
+      error: 'Persönliche Sammlungen konnten nicht geladen werden.'
+    }, 503);
   }
 }
 
@@ -112,6 +174,10 @@ export async function onRequestPost({ request, env }) {
 
   const auth = await requireUser(request, env);
   if (auth.error) return auth.error;
+
+  if (!env.COLLECTIONS_DB) {
+    return json({ error: 'D1-Binding COLLECTIONS_DB fehlt.' }, 503);
+  }
 
   if (!(request.headers.get('content-type') || '')
     .toLowerCase()
