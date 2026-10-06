@@ -748,41 +748,53 @@ const remove=makeButton(
 controls.append(remove)}
        else{
 
-  const remove =
-  makeButton(
-    'Entfernen',
-    ()=>mutate(
-      '/unassign',
-      'POST',
-      {
-        lawId:law.id,
-        collectionId:group.id
+  const compare =
+    makeButton(
+      'Alt / Neu',
+      ()=>{
+        if(
+          window.RMCompare &&
+          typeof window.RMCompare.open === 'function'
+        ){
+          window.RMCompare.open({
+            lawId: law.id,
+            collectionId: group.id,
+            title: law.title
+          });
+        }else{
+          alert(
+            'Der Alt-Neu-Vergleich wurde nicht geladen.'
+          );
+        }
       }
-    )
+    );
+
+  const remove =
+    makeButton(
+      'Entfernen',
+      ()=>{
+        mutate(
+          '/unassign',
+          'POST',
+          {
+            lawId: law.id,
+            collectionId: group.id
+          }
+        );
+      }
+    );
+
+  controls.classList.add(
+    'collectionLawActions'
   );
 
-const compare =
-  makeButton(
-    'Alt / Neu',
-    ()=>window.RMCompare?.open({
-      lawId: law.id,
-      collectionId: group.id,
-      title: law.title
-    })
-  );
-
-controls.classList.add(
-  'collectionLawActions'
-);
-
-controls.append(compare);
-controls.append(remove);
-  );
-
+  controls.append(compare);
   controls.append(remove);
 
+
+
 }
-        row.append(controls);contents.append(row)}
+        row.append(controls);contents.append(row)
       if(!group.inbox){
 
   const actions =
