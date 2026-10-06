@@ -393,37 +393,42 @@ controls.append(remove)}
         row.append(controls);contents.append(row)}
       if(!group.inbox){
 
-  contents.append(
-    makeButton(
-      'RIS-Abgleich starten',
-      ()=>{
+  const actions =
+  document.createElement('div');
+
+actions.className =
+  'collectionGroupActions';
+
+actions.append(
+  makeButton(
+    'RIS-Abgleich starten',
+    ()=>mutate(
+      '/check',
+      'POST',
+      {
+        collectionId:group.id
+      }
+    )
+  )
+);
+
+actions.append(
+  makeButton(
+    'Sammlung löschen',
+    ()=>{
+      if(confirm(
+        'Sammlung wirklich löschen?'
+      )){
         mutate(
-          '/check',
-          'POST',
-          {
-            collectionId: group.id
-          }
+          '/' + encodeURIComponent(group.id),
+          'DELETE'
         );
       }
-    )
-  );
+    }
+  )
+);
 
-  contents.append(
-    makeButton(
-      'Sammlung löschen',
-      ()=>{
-        if(confirm(
-          'Sammlung wirklich löschen?'
-        )){
-          mutate(
-            '/' + encodeURIComponent(group.id),
-            'DELETE'
-          );
-        }
-      }
-    )
-  );
-
+contents.append(actions);
 }
       box.append(contents);host.append(box)}
   }
