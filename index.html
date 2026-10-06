@@ -26,7 +26,6 @@ justify-self:center;
  
 display:block;
 }
-}
 .myChange{
   margin-top:18px;
   padding:16px;
@@ -123,7 +122,7 @@ display:block;
 .collectionControls select option{
   background:#233744;
   color:#ffffff;
-}                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                }.collectionHint{font-size:11px;color:#9fb6c3;margin:9px 0}.dark 
+}                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                .collectionHint{font-size:11px;color:#9fb6c3;margin:9px 0}
 .dark .collectionEntry{
   display:grid;
 
@@ -690,11 +689,6 @@ String(law.title || 'Ohne Titel')
 .replace(/\s+/g,' ')
 .trim();
 
-const spacer =
-  document.createElement('div');
-
-row.append(spacer);
-
 const center =
   document.createElement('div');
 
@@ -841,6 +835,7 @@ box.append(contents);
 host.append(box);
 }
 }
+  el('reloadCollectionChanges')?.addEventListener('click',loadCollectionChanges);
   el('personalCollectionForm').addEventListener('submit',async e=>{e.preventDefault();const name=el('personalCollectionName').value.trim();if(!name)return;await mutate('','POST',{name});el('personalCollectionName').value=''});
  menu.addEventListener('click',()=>{
 
@@ -1061,6 +1056,8 @@ document
   );
 
 loadMyChanges();
+
+})();
 </script>
   <script src="./vorschrift-hinzufuegen.js"></script>
   <script src="./alt-neu-vergleich.js"></script>
