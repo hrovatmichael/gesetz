@@ -173,7 +173,7 @@ String(law.title || 'Ohne Titel')
 .replace(/<[^>]*>/g,' ')
 .replace(/\s+/g,' ')
 .trim();
-``row.append(name);
+row.append(name);
         const controls=document.createElement('div');controls.className='collectionControls';
         if(group.inbox){const select=document.createElement('select');select.setAttribute('aria-label','Ziel-Sammlung');for(const target of model.collections){const option=document.createElement('option');option.value=target.id;option.textContent=target.name;select.append(option)}controls.append(select);
           const assign=makeButton('Zuordnen',()=>mutate('/assign','POST',{lawId:law.id,collectionId:select.value}));assign.disabled=!model.collections.length;controls.append(assign);
