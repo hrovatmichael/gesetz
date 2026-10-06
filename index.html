@@ -657,6 +657,7 @@ RIS-geprüfte Vorschriften zuerst im Eingangskorb ablegen, dann Sammlungen zuord
       true
     );
   }
+}
 
   function render(){const host=el('personalCollectionGroups');host.replaceChildren();
     const sections=[{id:'inbox',name:'Noch keiner Sammlung zugewiesen',laws:model.inbox||[],inbox:true},...model.collections.map(c=>({...c,inbox:false}))];
@@ -931,6 +932,10 @@ async function addFromResult(item, button){
         documentUrl: item.url || null,
         title: item.title || null
       }
+    );
+
+    document.dispatchEvent(
+      new CustomEvent('rm-collections-changed')
     );
 
     button.textContent =
