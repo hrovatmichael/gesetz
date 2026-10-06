@@ -1,393 +1,58 @@
 import { requireUser, sameOrigin } from '../../../_lib/auth.js';
 
 const RIS_API = 'https://data.bka.gv.at/ris/api/v2.6/Bundesrecht';
-const MAX_LAWS_PER_RUN = 100;
-const HEADERS = {
-  'Content-Type': 'application/json; charset=utf-8',
-  'Cache-Control': 'no-store',
-  'X-Content-Type-Options': 'nosniff'
-};
+const HEADERS = {'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'};
+const MAX_LAWS = 100;
+const MAX_PAGES = 20;
+const MAX_TEXT = 120000;
+const MAX_SNAPSHOT = 1800000;
+const RIS_HOSTS = new Set(['www.ris.bka.gv.at','ris.bka.gv.at','ogd.ris.bka.gv.at']);
 
-const respond = (data, status = 200) =>
-  new Response(JSON.stringify(data), { status, headers: HEADERS });
+const respond = (data,status=200) => new Response(JSON.stringify(data),{status,headers:HEADERS});
+const txt = value => typeof value === 'string' ? value.trim() : '';
 
-const text = value => typeof value === 'string' ? value.trim() : '';
+function at(object,path){let value=object;for(const key of path)value=value?.[key];return value;}
+function first(object,paths){for(const path of paths){const value=txt(at(object,path));if(value)return value;}return '';}
+function docs(json){const value=json?.OgdSearchResult?.OgdDocumentResults?.OgdDocumentReference;return !value?[]:Array.isArray(value)?value:[value];}
+function clean(value){return String(value??'').normalize('NFC').replace(/\u00a0/g,' ').replace(/[\t\f\v ]+/g,' ').replace(/\s*\n\s*/g,'\n').replace(/\n{3,}/g,'\n\n').trim();}
+function date(value){const input=txt(value);let m;if((m=/^(\d{4})-(\d{2})-(\d{2})/.exec(input)))return `${m[1]}-${m[2]}-${m[3]}`;if((m=/^(\d{2})\.(\d{2})\.(\d{4})/.exec(input)))return `${m[3]}-${m[2]}-${m[1]}`;if((m=/^(\d{4})(\d{2})(\d{2})$/.exec(input)))return `${m[1]}-${m[2]}-${m[3]}`;return '';}
+function stable(value){if(Array.isArray(value))return '['+value.map(stable).join(',')+']';if(value&&typeof value==='object')return '{'+Object.keys(value).sort().map(key=>JSON.stringify(key)+':'+stable(value[key])).join(',')+'}';return JSON.stringify(value);}
+async function hash(value){const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(String(value)));return [...new Uint8Array(digest)].map(byte=>byte.toString(16).padStart(2,'0')).join('');}
+function decode(value){const named={amp:'&',lt:'<',gt:'>',quot:'"',apos:"'",nbsp:' '};return String(value||'').replace(/&#(\d+);/g,(m,n)=>String.fromCodePoint(Number(n))).replace(/&#x([0-9a-f]+);/gi,(m,n)=>String.fromCodePoint(parseInt(n,16))).replace(/&([a-z]+);/gi,(m,n)=>named[n.toLowerCase()]??m);}
+function htmlText(html){return clean(decode(String(html||'').replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi,' ').replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi,' ').replace(/<br\s*\/?>/gi,'\n').replace(/<\/(p|div|li|tr|h[1-6]|section|article)>/gi,'\n').replace(/<[^>]+>/g,' ')));}
+function risUrl(value){try{const url=new URL(value,'https://www.ris.bka.gv.at');return url.protocol==='https:'&&RIS_HOSTS.has(url.hostname.toLowerCase())?url.href:'';}catch{return '';}}
 
-function get(object, path) {
-  let value = object;
-  for (const key of path) value = value?.[key];
-  return value;
-}
+function lawNumber(document){const m=document?.Data?.Metadaten||{};const direct=first(m,[['Bundesrecht','BrKons','Gesetzesnummer'],['Bundesrecht','Gesetzesnummer'],['Technisch','Gesetzesnummer']]);if(/^\d{8}$/.test(direct))return direct;return first(m,[['Allgemein','DokumentUrl']]).match(/[?&]Gesetzesnummer=(\d{8})(?:&|$)/i)?.[1]||'';}
+function provisionKey(document,index){const m=document?.Data?.Metadaten||{};const explicit=first(m,[['Bundesrecht','BrKons','ArtikelParagraphAnlage'],['Bundesrecht','BrKons','Bezeichnung'],['Bundesrecht','BrKons','Paragraph'],['Bundesrecht','BrKons','Artikel'],['Bundesrecht','BrKons','Anlage']]);if(explicit)return clean(explicit);const info=first(m,[['Bundesrecht','BrKons','Kurzinformation']]);const match=info.match(/(?:§\s*\d+[a-z]?(?:\s+Abs\.?\s*\d+[a-z]?)?|Art(?:ikel)?\.?\s*\d+[a-z]?|Anlage\s*[\w.-]+)/i);if(match)return clean(match[0]);return first(m,[['Technisch','ID'],['Allgemein','DokumentId']])||`Dokument ${index+1}`;}
+function canonical(document,index){const m=document?.Data?.Metadaten||{};return {key:provisionKey(document,index),documentId:first(m,[['Technisch','ID'],['Allgemein','DokumentId']]),documentUrl:first(m,[['Allgemein','DokumentUrl']]),lawNumber:lawNumber(document),title:clean(first(m,[['Bundesrecht','Titel'],['Bundesrecht','Kurztitel'],['Bundesrecht','BrKons','Titel']])),shortInformation:clean(first(m,[['Bundesrecht','BrKons','Kurzinformation']])),effectiveFrom:date(first(m,[['Bundesrecht','BrKons','Inkrafttretensdatum'],['Bundesrecht','Inkrafttretensdatum']])),effectiveTo:date(first(m,[['Bundesrecht','BrKons','Ausserkrafttretensdatum'],['Bundesrecht','Ausserkrafttretensdatum']])),publishedAt:date(first(m,[['Allgemein','Veroeffentlicht']])),changedAt:date(first(m,[['Allgemein','Geaendert']]))};}
 
-function first(object, paths) {
-  for (const path of paths) {
-    const value = text(get(object, path));
-    if (value) return value;
-  }
-  return '';
-}
+async function provisionText(document){const url=risUrl(document.documentUrl);if(!url)return clean([document.title,document.shortInformation,document.effectiveFrom?`Inkrafttreten: ${document.effectiveFrom}`:'',document.effectiveTo?`Außerkrafttreten: ${document.effectiveTo}`:''].filter(Boolean).join('\n'));const response=await fetch(url,{headers:{Accept:'text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8'}});if(!response.ok)throw Error(`RIS-Dokument ${document.key}: HTTP ${response.status}`);const source=await response.text();const type=response.headers.get('content-type')||'';const result=/html|xml/i.test(type)||/<[^>]+>/.test(source.slice(0,500))?htmlText(source):clean(source);if(!result)throw Error(`RIS-Dokument ${document.key}: kein auswertbarer Text`);return result.slice(0,MAX_TEXT);}
 
-function documentsFrom(json) {
-  const value = json?.OgdSearchResult?.OgdDocumentResults?.OgdDocumentReference;
-  if (!value) return [];
-  return Array.isArray(value) ? value : [value];
-}
+async function allRisDocuments(risNumber){const all=[];let complete=false;for(let page=1;page<=MAX_PAGES;page++){const url=new URL(RIS_API);url.searchParams.set('Applikation','BrKons');url.searchParams.set('Gesetzesnummer',risNumber);url.searchParams.set('DokumenteProSeite','OneHundred');url.searchParams.set('Seitennummer',String(page));const response=await fetch(url.toString(),{headers:{Accept:'application/json'}});if(!response.ok)throw Error(`RIS HTTP ${response.status}`);const json=await response.json();if(json?.OgdSearchResult?.Error)throw Error(String(json.OgdSearchResult.Error.Message||'RIS-Suche fehlgeschlagen'));const pageDocs=docs(json);all.push(...pageDocs);if(pageDocs.length<100){complete=true;break;}}if(!complete)throw Error(`RIS-Ergebnis nach ${MAX_PAGES} Seiten begrenzt; Prüfung unvollständig`);return all;}
 
-function normalize(value) {
-  return String(value ?? '').normalize('NFC').replace(/\s+/g, ' ').trim();
-}
+async function buildSnapshot(risNumber){const source=await allRisDocuments(risNumber);const documents=source.map(canonical).filter(item=>!item.lawNumber||item.lawNumber===risNumber);if(!documents.length)throw Error('Keine passenden RIS-Dokumente gefunden');const counts=new Map(),provisions={},dates=[];for(const document of documents){const count=counts.get(document.key)||0;counts.set(document.key,count+1);const key=count===0?document.key:`${document.key} [${document.documentId||count+1}]`;const body=await provisionText(document);provisions[key]={key,title:document.title||document.shortInformation||key,documentId:document.documentId||null,documentUrl:risUrl(document.documentUrl)||null,effectiveFrom:document.effectiveFrom||null,effectiveTo:document.effectiveTo||null,publishedAt:document.publishedAt||null,changedAt:document.changedAt||null,hash:await hash(body),text:body};dates.push(document.changedAt,document.publishedAt,document.effectiveFrom,document.effectiveTo);}const snapshot={schemaVersion:1,risNumber,provisions};const snapshotJson=JSON.stringify(snapshot);if(snapshotJson.length>MAX_SNAPSHOT)throw Error('RIS-Snapshot ist zu groß; Prüfung wurde nicht gespeichert');const fingerprintBase=Object.fromEntries(Object.entries(provisions).sort(([a],[b])=>a.localeCompare(b,'de-AT')).map(([key,item])=>[key,{hash:item.hash,effectiveFrom:item.effectiveFrom,effectiveTo:item.effectiveTo,documentId:item.documentId}]));return {snapshot,snapshotJson,fingerprint:await hash(stable(fingerprintBase)),documentCount:Object.keys(provisions).length,latestDate:dates.map(date).filter(Boolean).sort().at(-1)||null};}
 
-function normalizeDate(value) {
-  const input = text(value);
-  let match;
-  if ((match = /^(\d{4})-(\d{2})-(\d{2})/.exec(input))) {
-    return `${match[1]}-${match[2]}-${match[3]}`;
-  }
-  if ((match = /^(\d{2})\.(\d{2})\.(\d{4})/.exec(input))) {
-    return `${match[3]}-${match[2]}-${match[1]}`;
-  }
-  if ((match = /^(\d{4})(\d{2})(\d{2})$/.exec(input))) {
-    return `${match[1]}-${match[2]}-${match[3]}`;
-  }
-  return '';
-}
+function parseSnapshot(value){try{const parsed=JSON.parse(value);return parsed&&parsed.provisions&&typeof parsed.provisions==='object'?parsed:null;}catch{return null;}}
+function compare(previous,current){const before=previous?.provisions||{},after=current?.provisions||{},keys=[...new Set([...Object.keys(before),...Object.keys(after)])].sort((a,b)=>a.localeCompare(b,'de-AT')),changes=[];for(const key of keys){const oldItem=before[key],newItem=after[key];if(!oldItem&&newItem)changes.push({type:'added',key,title:newItem.title||key,oldHash:null,newHash:newItem.hash,oldText:null,newText:newItem.text});else if(oldItem&&!newItem)changes.push({type:'removed',key,title:oldItem.title||key,oldHash:oldItem.hash,newHash:null,oldText:oldItem.text,newText:null});else if(oldItem.hash!==newItem.hash)changes.push({type:'modified',key,title:newItem.title||oldItem.title||key,oldHash:oldItem.hash,newHash:newItem.hash,oldText:oldItem.text,newText:newItem.text});}return changes;}
 
-function stable(value) {
-  if (Array.isArray(value)) return '[' + value.map(stable).join(',') + ']';
-  if (value && typeof value === 'object') {
-    return '{' + Object.keys(value).sort()
-      .map(key => JSON.stringify(key) + ':' + stable(value[key]))
-      .join(',') + '}';
-  }
-  return JSON.stringify(value);
-}
+async function latestSnapshot(db,userId,collectionId,lawId){return db.prepare(`SELECT id,check_id,fingerprint,snapshot_json,created_at FROM personal_law_snapshots WHERE user_id=? AND collection_id=? AND law_id=? ORDER BY created_at DESC,rowid DESC LIMIT 1`).bind(userId,collectionId,lawId).first();}
+async function addCheck(db,v){const result=await db.prepare(`INSERT INTO personal_law_checks (user_id,collection_id,law_id,status,previous_fingerprint,current_fingerprint,checked_at,error_message) VALUES (?,?,?,?,?,?,?,?)`).bind(v.userId,v.collectionId,v.lawId,v.status,v.previousFingerprint,v.currentFingerprint,v.checkedAt,v.errorMessage).run();const id=result.meta?.last_row_id;if(!Number.isInteger(id))throw Error('Prüf-ID konnte nicht ermittelt werden');return id;}
+async function saveSuccess(db,v){const checkId=await addCheck(db,{userId:v.userId,collectionId:v.collectionId,lawId:v.law.id,status:v.status,previousFingerprint:v.previous?.fingerprint||null,currentFingerprint:v.current.fingerprint,checkedAt:v.checkedAt,errorMessage:null});const batch=[db.prepare(`UPDATE ris_laws SET ris_fingerprint=?,last_checked_at=?,check_status=?,amendment_date=CASE WHEN ? IS NOT NULL THEN ? ELSE amendment_date END WHERE id=?`).bind(v.current.fingerprint,v.checkedAt,v.status==='changed'?'changed':'complete',v.amendmentDate,v.amendmentDate,v.law.id),db.prepare(`INSERT INTO personal_law_snapshots (id,check_id,user_id,collection_id,law_id,fingerprint,snapshot_json,created_at) VALUES (?,?,?,?,?,?,?,?)`).bind(crypto.randomUUID(),checkId,v.userId,v.collectionId,v.law.id,v.current.fingerprint,v.current.snapshotJson,v.checkedAt)];for(const change of v.changes)batch.push(db.prepare(`INSERT INTO personal_law_change_items (check_id,user_id,collection_id,law_id,change_type,provision_key,provision_title,previous_hash,current_hash,previous_text,current_text,detected_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`).bind(checkId,v.userId,v.collectionId,v.law.id,change.type,change.key,change.title,change.oldHash,change.newHash,change.oldText,change.newText,v.checkedAt));await db.batch(batch);return checkId;}
+async function saveError(db,v){const checkId=await addCheck(db,{userId:v.userId,collectionId:v.collectionId,lawId:v.law.id,status:'error',previousFingerprint:v.previous?.fingerprint||null,currentFingerprint:null,checkedAt:v.checkedAt,errorMessage:v.message.slice(0,500)});await db.prepare(`UPDATE ris_laws SET last_checked_at=?,check_status='error' WHERE id=?`).bind(v.checkedAt,v.law.id).run();return checkId;}
 
-async function sha256(value) {
-  const digest = await crypto.subtle.digest(
-    'SHA-256',
-    new TextEncoder().encode(value)
-  );
-  return [...new Uint8Array(digest)]
-    .map(byte => byte.toString(16).padStart(2, '0'))
-    .join('');
-}
-
-function canonicalDocument(document) {
-  const metadata = document?.Data?.Metadaten || {};
-  return {
-    documentId: first(metadata, [
-      ['Technisch', 'ID'],
-      ['Allgemein', 'DokumentId']
-    ]),
-    documentUrl: first(metadata, [['Allgemein', 'DokumentUrl']]),
-    lawNumber: first(metadata, [
-      ['Bundesrecht', 'BrKons', 'Gesetzesnummer'],
-      ['Bundesrecht', 'Gesetzesnummer'],
-      ['Technisch', 'Gesetzesnummer']
-    ]),
-    title: first(metadata, [
-      ['Bundesrecht', 'Titel'],
-      ['Bundesrecht', 'Kurztitel'],
-      ['Bundesrecht', 'BrKons', 'Titel']
-    ]),
-    shortInformation: first(metadata, [
-      ['Bundesrecht', 'BrKons', 'Kurzinformation']
-    ]),
-    section: first(metadata, [
-      ['Bundesrecht', 'BrKons', 'ArtikelParagraphAnlage'],
-      ['Bundesrecht', 'BrKons', 'Abschnitt']
-    ]),
-    effectiveFrom: normalizeDate(first(metadata, [
-      ['Bundesrecht', 'BrKons', 'Inkrafttretensdatum'],
-      ['Bundesrecht', 'Inkrafttretensdatum']
-    ])),
-    effectiveTo: normalizeDate(first(metadata, [
-      ['Bundesrecht', 'BrKons', 'Ausserkrafttretensdatum'],
-      ['Bundesrecht', 'Ausserkrafttretensdatum']
-    ])),
-    publishedAt: normalizeDate(first(metadata, [['Allgemein', 'Veroeffentlicht']])),
-    changedAt: normalizeDate(first(metadata, [['Allgemein', 'Geaendert']]))
-  };
-}
-
-async function readRisState(risNumber) {
-  const url = new URL(RIS_API);
-  url.searchParams.set('Applikation', 'BrKons');
-  url.searchParams.set('Gesetzesnummer', risNumber);
-  url.searchParams.set('DokumenteProSeite', 'OneHundred');
-  url.searchParams.set('Seitennummer', '1');
-
-  const response = await fetch(url.toString(), {
-    headers: { Accept: 'application/json' }
-  });
-  if (!response.ok) throw new Error(`RIS HTTP ${response.status}`);
-
-  const json = await response.json();
-  if (json?.OgdSearchResult?.Error) {
-    throw new Error(
-      String(json.OgdSearchResult.Error.Message || 'RIS-Suche fehlgeschlagen')
-    );
-  }
-
-  const documents = documentsFrom(json)
-    .map(canonicalDocument)
-    .filter(row => !row.lawNumber || row.lawNumber === risNumber)
-    .map(row => Object.fromEntries(
-      Object.entries(row).map(([key, value]) => [key, normalize(value)])
-    ))
-    .sort((a, b) => stable(a).localeCompare(stable(b), 'de-AT'));
-
-  if (!documents.length) {
-    throw new Error('Keine passenden RIS-Dokumente gefunden');
-  }
-
-  const dates = documents
-    .flatMap(row => [row.changedAt, row.publishedAt, row.effectiveFrom, row.effectiveTo])
-    .map(normalizeDate)
-    .filter(Boolean)
-    .sort();
-
-  return {
-    fingerprint: await sha256(stable({ risNumber, documents })),
-    latestDate: dates.at(-1) || null,
-    documentCount: documents.length
-  };
-}
-
-async function latestSuccessfulCheck(db, userId, collectionId, lawId) {
-  return db.prepare(`
-    SELECT current_fingerprint
-    FROM personal_law_checks
-    WHERE user_id = ?
-      AND collection_id = ?
-      AND law_id = ?
-      AND status IN ('baseline', 'unchanged', 'changed')
-      AND current_fingerprint IS NOT NULL
-    ORDER BY id DESC
-    LIMIT 1
-  `).bind(userId, collectionId, lawId).first();
-}
-
-async function saveSuccess(db, values) {
-  await db.batch([
-    db.prepare(`
-      UPDATE ris_laws
-      SET ris_fingerprint = ?,
-          last_checked_at = ?,
-          check_status = ?,
-          amendment_date = CASE WHEN ? IS NOT NULL THEN ? ELSE amendment_date END
-      WHERE id = ?
-    `).bind(
-      values.currentFingerprint,
-      values.checkedAt,
-      values.lawStatus,
-      values.amendmentDate,
-      values.amendmentDate,
-      values.law.id
-    ),
-    db.prepare(`
-      INSERT INTO personal_law_checks (
-        user_id, collection_id, law_id, status,
-        previous_fingerprint, current_fingerprint,
-        checked_at, error_message
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
-    `).bind(
-      values.userId,
-      values.collectionId,
-      values.law.id,
-      values.historyStatus,
-      values.previousFingerprint,
-      values.currentFingerprint,
-      values.checkedAt
-    )
-  ]);
-}
-
-async function saveError(db, values) {
-  await db.batch([
-    db.prepare(`
-      UPDATE ris_laws
-      SET last_checked_at = ?, check_status = 'error'
-      WHERE id = ?
-    `).bind(values.checkedAt, values.law.id),
-    db.prepare(`
-      INSERT INTO personal_law_checks (
-        user_id, collection_id, law_id, status,
-        previous_fingerprint, current_fingerprint,
-        checked_at, error_message
-      ) VALUES (?, ?, ?, 'error', NULL, NULL, ?, ?)
-    `).bind(
-      values.userId,
-      values.collectionId,
-      values.law.id,
-      values.checkedAt,
-      values.errorMessage.slice(0, 500)
-    )
-  ]);
-}
-
-export async function onRequestPost({ request, env }) {
-  if (!sameOrigin(request)) {
-    return respond({ error: 'Ungültiger Ursprung.' }, 403);
-  }
-
-  const auth = await requireUser(request, env);
-  if (auth.error) return auth.error;
-
-  if (!env.COLLECTIONS_DB) {
-    return respond({ error: 'D1-Binding COLLECTIONS_DB fehlt.' }, 503);
-  }
-
-  const contentType = request.headers.get('content-type') || '';
-  if (!contentType.toLowerCase().includes('application/json')) {
-    return respond({ error: 'JSON erforderlich.' }, 415);
-  }
-
-  let input;
-  try {
-    const raw = await request.text();
-    if (raw.length > 2000) return respond({ error: 'Eingabe zu groß.' }, 413);
-    input = JSON.parse(raw);
-  } catch {
-    return respond({ error: 'Ungültiges JSON.' }, 400);
-  }
-
-  const collectionId = String(input?.collectionId || '').trim();
-  if (!collectionId || collectionId.length > 120) {
-    return respond({ error: 'Ungültige collectionId.' }, 400);
-  }
-
-  const db = env.COLLECTIONS_DB;
-  const userId = auth.me?.id;
-  if (!userId) return respond({ error: 'Benutzer konnte nicht ermittelt werden.' }, 401);
-
-  try {
-    const collection = await db.prepare(`
-      SELECT id, name
-      FROM personal_collections
-      WHERE id = ? AND user_id = ?
-    `).bind(collectionId, userId).first();
-
-    if (!collection) return respond({ error: 'Sammlung nicht gefunden.' }, 404);
-
-    const query = await db.prepare(`
-      SELECT rl.id, rl.ris_number, rl.title, rl.ris_url
-      FROM personal_collection_laws pcl
-      INNER JOIN ris_laws rl ON rl.id = pcl.law_id
-      WHERE pcl.user_id = ? AND pcl.collection_id = ?
-      ORDER BY rl.title COLLATE NOCASE, rl.id
-      LIMIT ?
-    `).bind(userId, collectionId, MAX_LAWS_PER_RUN + 1).all();
-
-    const laws = query.results || [];
-    if (laws.length > MAX_LAWS_PER_RUN) {
-      return respond({
-        error: `Sammlung enthält mehr als ${MAX_LAWS_PER_RUN} Vorschriften.`
-      }, 413);
-    }
-
-    const summary = {
-      total: laws.length,
-      baseline: 0,
-      unchanged: 0,
-      changed: 0,
-      errors: 0
-    };
-    const results = [];
-
-    for (const law of laws) {
-      const checkedAt = new Date().toISOString();
-
-      try {
-        if (!/^\d{8}$/.test(String(law.ris_number || ''))) {
-          throw new Error('Ungültige oder fehlende RIS-Gesetzesnummer');
-        }
-
-        const previous = await latestSuccessfulCheck(
-          db, userId, collectionId, law.id
-        );
-        const current = await readRisState(law.ris_number);
-        const previousFingerprint = previous?.current_fingerprint || null;
-
-        let historyStatus;
-        let lawStatus;
-        let amendmentDate = null;
-
-        if (!previousFingerprint) {
-          historyStatus = 'baseline';
-          lawStatus = 'complete';
-          summary.baseline++;
-        } else if (previousFingerprint === current.fingerprint) {
-          historyStatus = 'unchanged';
-          lawStatus = 'complete';
-          summary.unchanged++;
-        } else {
-          historyStatus = 'changed';
-          lawStatus = 'changed';
-          amendmentDate = current.latestDate;
-          summary.changed++;
-        }
-
-        await saveSuccess(db, {
-          userId,
-          collectionId,
-          law,
-          previousFingerprint,
-          currentFingerprint: current.fingerprint,
-          historyStatus,
-          lawStatus,
-          checkedAt,
-          amendmentDate
-        });
-
-        results.push({
-          lawId: law.id,
-          risNumber: law.ris_number,
-          title: law.title,
-          status: historyStatus,
-          checkedAt,
-          amendmentDate,
-          documentCount: current.documentCount
-        });
-      } catch (error) {
-        const errorMessage = String(error?.message || error || 'Prüfungsfehler');
-        summary.errors++;
-
-        try {
-          await saveError(db, {
-            userId,
-            collectionId,
-            law,
-            checkedAt,
-            errorMessage
-          });
-        } catch (saveFailure) {
-          console.error('Prüffehler konnte nicht gespeichert werden:', saveFailure);
-        }
-
-        results.push({
-          lawId: law.id,
-          risNumber: law.ris_number,
-          title: law.title,
-          status: 'error',
-          checkedAt,
-          error: errorMessage
-        });
-      }
-    }
-
-    return respond({
-      success: summary.errors === 0,
-      collectionId,
-      collectionName: collection.name,
-      checkedAt: new Date().toISOString(),
-      summary,
-      results
-    }, laws.length > 0 && summary.errors === laws.length ? 503 : 200);
-  } catch (error) {
-    console.error('Sammlung mit RIS abgleichen:', error);
-    return respond({
-      error: 'RIS-Abgleich der Sammlung konnte nicht ausgeführt werden.'
-    }, 503);
-  }
+export async function onRequestPost({request,env}){
+  if(!sameOrigin(request))return respond({error:'Ungültiger Ursprung.'},403);
+  const auth=await requireUser(request,env);if(auth.error)return auth.error;
+  if(!env.COLLECTIONS_DB)return respond({error:'D1-Binding COLLECTIONS_DB fehlt.'},503);
+  if(!(request.headers.get('content-type')||'').toLowerCase().includes('application/json'))return respond({error:'JSON erforderlich.'},415);
+  let input;try{const raw=await request.text();if(raw.length>2000)return respond({error:'Eingabe zu groß.'},413);input=JSON.parse(raw);}catch{return respond({error:'Ungültiges JSON.'},400);}
+  const collectionId=String(input?.collectionId||'').trim();if(!collectionId||collectionId.length>120)return respond({error:'Ungültige collectionId.'},400);
+  const db=env.COLLECTIONS_DB,userId=auth.me?.id;if(!userId)return respond({error:'Benutzer konnte nicht ermittelt werden.'},401);
+  try{
+    const collection=await db.prepare(`SELECT id,name FROM personal_collections WHERE id=? AND user_id=?`).bind(collectionId,userId).first();if(!collection)return respond({error:'Sammlung nicht gefunden.'},404);
+    const rows=await db.prepare(`SELECT rl.id,rl.ris_number,rl.title,rl.ris_url FROM personal_collection_laws pcl JOIN ris_laws rl ON rl.id=pcl.law_id WHERE pcl.user_id=? AND pcl.collection_id=? ORDER BY rl.title COLLATE NOCASE,rl.id LIMIT ?`).bind(userId,collectionId,MAX_LAWS+1).all();const laws=rows.results||[];if(laws.length>MAX_LAWS)return respond({error:`Sammlung enthält mehr als ${MAX_LAWS} Vorschriften.`},413);
+    const summary={total:laws.length,baseline:0,unchanged:0,changed:0,errors:0,changeItems:0},results=[];
+    for(const law of laws){const checkedAt=new Date().toISOString();let previous=null;try{if(!/^\d{8}$/.test(String(law.ris_number||'')))throw Error('Ungültige oder fehlende RIS-Gesetzesnummer');previous=await latestSnapshot(db,userId,collectionId,law.id);const current=await buildSnapshot(law.ris_number);const oldSnapshot=previous?parseSnapshot(previous.snapshot_json):null;if(previous&&!oldSnapshot)throw Error('Vorheriger Snapshot ist beschädigt oder nicht lesbar');const changes=oldSnapshot?compare(oldSnapshot,current.snapshot):[];let status,amendmentDate=null;if(!previous){status='baseline';summary.baseline++;}else if(!changes.length){status='unchanged';summary.unchanged++;}else{status='changed';amendmentDate=current.latestDate||checkedAt.slice(0,10);summary.changed++;summary.changeItems+=changes.length;}const checkId=await saveSuccess(db,{userId,collectionId,law,previous,current,status,checkedAt,amendmentDate,changes});results.push({checkId,lawId:law.id,risNumber:law.ris_number,title:law.title,status,checkedAt,amendmentDate,documentCount:current.documentCount,changeCount:changes.length,changes:changes.map(change=>({type:change.type,provisionKey:change.key,provisionTitle:change.title}))});}catch(error){const message=String(error?.message||error||'Prüfungsfehler');summary.errors++;try{await saveError(db,{userId,collectionId,law,previous,checkedAt,message});}catch(saveFailure){console.error('Prüffehler konnte nicht gespeichert werden:',saveFailure);}results.push({lawId:law.id,risNumber:law.ris_number,title:law.title,status:'error',checkedAt,error:message});}}
+    return respond({success:summary.errors===0,collectionId,collectionName:collection.name,checkedAt:new Date().toISOString(),summary,results},laws.length>0&&summary.errors===laws.length?503:200);
+  }catch(error){console.error('Sammlung mit RIS abgleichen:',error);return respond({error:'RIS-Abgleich der Sammlung konnte nicht ausgeführt werden.'},503);}
 }
