@@ -429,13 +429,143 @@ $('changesStart').addEventListener('click',()=>changesLoad(true));$('changesMore
   if(!nav||!wrap)return;
   const menu=document.createElement('button');menu.type='button';menu.className='menuItem';menu.textContent='▤   Meine Gesetzessammlungen';menu.id='menuPersonalCollections';nav.append(menu);
   const panel=document.createElement('div');panel.id='personalCollectionsPanel';panel.hidden=true;
-  panel.innerHTML=`<div class="eyebrow">RIS · PERSÖNLICHE SAMMLUNGEN</div><h1>Meine Gesetzessammlungen</h1>
-    <p class="sub">RIS-geprüfte Vorschriften zuerst im Eingangskorb ablegen, dann Sammlungen zuordnen.</p>
-    <div class="status" id="personalCollectionStatus" role="status" aria-live="polite">Lade persönliche Sammlungen …</div>
+  panel.innerHTML=`
+<div class="eyebrow">RIS · PERSÖNLICHE SAMMLUNGEN</div>
+<h1>Meine Gesetzessammlungen</h1>
+
+<p class="sub">
+RIS-geprüfte Vorschriften zuerst im Eingangskorb ablegen, dann Sammlungen zuordnen.
+</p>
+
+<section class="panel">
+  <div class="panelhead">
+    <div>
+      <h2>Erkannte Änderungen</h2>
+      <div class="muted">
+        Änderungen aus überwachten Vorschriften
+      </div>
+    </div>
+
+    <button
+      id="reloadCollectionChanges"
+      class="btn alt"
+      type="button">
+      Aktualisieren
+    </button>
+  </div>
+
+  <div
+    id="collectionChangesStatus"
+    class="status">
+    Änderungen werden geladen ...
+  </div>
+
+  <div id="collectionChangesResults"></div>
+</section>
+
+<div class="status" id="personalCollectionStatus" role="status" aria-live="polite">Lade persönliche Sammlungen …</div>
     <section class="panel" style="margin-top:18px"><h2>Sammlung anlegen</h2><form class="controls" id="personalCollectionForm"><label class="field search">Name<input id="personalCollectionName" required maxlength="80" placeholder="z. B. Arbeitsschutz"></label><button class="btn" type="submit">Anlegen</button></form></section>
     <div id="personalCollectionGroups"></div>`;
   wrap.append(panel);
   const el=id=>document.getElementById(id);
+  async function loadCollectionChanges(){
+
+  const host =
+    el('collectionChangesResults');
+
+  const status =
+    el('collectionChangesStatus');
+
+  if(!host || !status){
+    return;
+  }
+
+  status.textContent =
+    'Änderungen werden geladen ...';
+
+  try{
+
+    const response =
+      await fetch(
+        '/api/me/changes',
+        {
+          credentials:'same-origin',
+          cache:'no-store'
+        }
+      );
+
+    const data =
+      await response.json();
+
+    host.replaceChildren();
+
+    if(
+      !data.changes ||
+      !data.changes.length
+    ){
+      status.textContent =
+        'Noch keine erkannten Änderungen.';
+      return;
+    }
+
+    status.textContent =
+      data.summary.changeItems +
+      ' Änderungen gefunden.';
+
+    for(const change of data.changes){
+
+      const box =
+        document.createElement('div');
+
+      box.className =
+        'myChange';
+
+      let html='';
+
+      for(const item of change.items){
+
+        let icon='✏';
+
+        if(item.type==='added'){
+          icon='➕';
+        }
+
+        if(item.type==='removed'){
+          icon='➖';
+        }
+
+        html += `
+          <div>
+            ${icon}
+            ${item.provisionKey}
+          </div>
+        `;
+      }
+
+      box.innerHTML=`
+        <div class="myChangeTitle">
+          ${change.title}
+        </div>
+
+        <div class="myChangeMeta">
+          Sammlung:
+          ${change.collectionName}
+        </div>
+
+        <div class="myChangeItems">
+          ${html}
+        </div>
+      `;
+
+      host.append(box);
+    }
+
+  }catch(error){
+
+    status.textContent =
+      'Änderungen konnten nicht geladen werden.';
+  }
+}
   let model=null,loading=false,folds={};
   function message(text,error=false){const x=el('personalCollectionStatus');x.className='status'+(error?' error':'');x.textContent=text}
   async function request(path='',method='GET',body){const r=await fetch(endpoint+path,{method,credentials:'same-origin',cache:'no-store',headers:{Accept:'application/json',...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});
@@ -646,7 +776,8 @@ contents.append(actions);
       box.append(contents);host.append(box)}
   }
   el('personalCollectionForm').addEventListener('submit',async e=>{e.preventDefault();const name=el('personalCollectionName').value.trim();if(!name)return;await mutate('','POST',{name});el('personalCollectionName').value=''});
-  menu.addEventListener('click',()=>{for(const child of wrap.children){if(child!==panel&&child.id&&/Panel$/.test(child.id))child.hidden=true}panel.hidden=false;for(const item of nav.querySelectorAll('.menuItem'))item.classList.toggle('active',item===menu);const title=document.querySelector('.top b');if(title)title.textContent='Meine Gesetzessammlungen';load()});
+  menu.addEventListener('click',()=>{for(const child of wrap.children){if(child!==panel&&child.id&&/Panel$/.test(child.id))child.hidden=true}panel.hidden=false;for(const item of nav.querySelectorAll('.menuItem'))item.classList.toggle('active',item===menu);const title=document.querySelector('.top b');if(title)title.textContent='Meine Gesetzessammlungen';load();
+loadCollectionChanges();});
   nav.addEventListener('click',e=>{if(e.target.closest('.menuItem')!==menu)panel.hidden=true},true);
   async function addFromResult(item,button){if(!item){message('RIS-Dokument nicht eindeutig zuordenbar.',true);return}button.disabled=true;button.textContent='Prüfe RIS …';try{
       // Only document identity is submitted; the server must resolve and verify the parent law in RIS.
