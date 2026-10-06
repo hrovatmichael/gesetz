@@ -749,20 +749,34 @@ controls.append(remove)}
        else{
 
   const remove =
-    makeButton(
-      'Entfernen',
-      ()=>mutate(
-        '/unassign',
-        'POST',
-        {
-          lawId:law.id,
-          collectionId:group.id
-        }
-      )
-    );
+  makeButton(
+    'Entfernen',
+    ()=>mutate(
+      '/unassign',
+      'POST',
+      {
+        lawId:law.id,
+        collectionId:group.id
+      }
+    )
+  );
 
-  controls.classList.add(
-    'collectionLawActions'
+const compare =
+  makeButton(
+    'Alt / Neu',
+    ()=>window.RMCompare?.open({
+      lawId: law.id,
+      collectionId: group.id,
+      title: law.title
+    })
+  );
+
+controls.classList.add(
+  'collectionLawActions'
+);
+
+controls.append(compare);
+controls.append(remove);
   );
 
   controls.append(remove);
@@ -943,6 +957,7 @@ loadCollectionChanges();});
   );
 </script>
   <script src="./vorschrift-hinzufuegen.js"></script>
+  <script src="./alt-neu-vergleich.js"></script>
 </body>
 </html>
 
