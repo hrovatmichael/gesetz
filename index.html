@@ -1049,13 +1049,17 @@ async function addFromResult(item, button){
       'Änderungen konnten nicht geladen werden.';
   }
 }
-  document
+
+document
   .getElementById(
     'reloadMyChanges'
   )
-  .addEventListener(
+  ?.addEventListener(
     'click',
     loadMyChanges
+  );
+
+loadMyChanges();
   );
 </script>
   <script src="./vorschrift-hinzufuegen.js"></script>
