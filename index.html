@@ -121,21 +121,22 @@ border-color:#405564;}.dark .status,.dark .source{background:#233744;color:#d6e4
   background:#233744;
   color:#ffffff;
 }                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                }.collectionHint{font-size:11px;color:#9fb6c3;margin:9px 0}.dark 
- .dark .collectionEntry{
+.dark .collectionEntry{
   display:grid;
+
   grid-template-columns:
     14px
     minmax(0,1fr)
-    auto
     190px;
 
-  gap:14px;
+  gap:18px;
 
   align-items:start;
 
   border-top:1px solid #435461;
   padding:14px 0;
 }
+
   .collectionEntry span{
 min-width:0;
 word-break:break-word;
@@ -682,12 +683,20 @@ String(law.title || 'Ohne Titel')
 .replace(/<[^>]*>/g,' ')
 .replace(/\s+/g,' ')
 .trim();
-row.append(name);
 
 const spacer =
   document.createElement('div');
 
 row.append(spacer);
+
+const center =
+  document.createElement('div');
+
+center.style.display = 'flex';
+center.style.flexDirection = 'column';
+center.style.gap = '4px';
+
+center.append(name);
 
 if(law.risUrl){
 
@@ -703,8 +712,10 @@ if(law.risUrl){
   link.textContent =
     'RIS öffnen ↗';
 
-  row.append(link);
+  center.append(link);
 }
+
+row.append(center);
         const controls=document.createElement('div');controls.className='collectionControls';
         if(group.inbox){const select=document.createElement('select');select.setAttribute('aria-label','Ziel-Sammlung');for(const target of model.collections){const option=document.createElement('option');option.value=target.id;option.textContent=target.name;select.append(option)}controls.append(select);
           const assign=makeButton('Zuordnen',()=>mutate('/assign','POST',{lawId:law.id,collectionId:select.value}));assign.disabled=!model.collections.length;controls.append(assign);
