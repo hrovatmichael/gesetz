@@ -163,12 +163,49 @@ $('changesStart').addEventListener('click',()=>changesLoad(true));$('changesMore
     const type=r.headers.get('content-type')||'';if(!type.includes('application/json'))throw Error('Persönliche Sammlungs-API nicht bereitgestellt.');
     const data=await r.json();if(!r.ok)throw Error(data.error||('HTTP '+r.status));return data}
   async function load(){if(loading)return;loading=true;try{const data=await request();if(!Array.isArray(data.collections)||!Array.isArray(data.inbox))throw Error('Unerwartete Serverantwort');model=data;render();message('Persönliche Sammlungen geladen.')}catch(e){model=null;el('personalCollectionGroups').replaceChildren();message(String(e.message||e),true)}finally{loading=false}}
-  function traffic(collection){const rows=collection.laws||[];if(!rows.length)return {color:'gray',text:'Keine Vorschriften'};
-    if(rows.some(x=>x.checkStatus!=='complete'||!x.checkedAt))return {color:'gray',text:'Prüfung offen'};
-    const cutoff=new Date();cutoff.setUTCDate(cutoff.getUTCDate()-14);
-    const changed=rows.filter(x=>x.amendmentDate&&Number.isFinite(Date.parse(x.amendmentDate))&&Date.parse(x.amendmentDate)>=cutoff.getTime()&&Date.parse(x.amendmentDate)<=Date.now());
-    return changed.length?{color:'red',text:changed.length+' Änderung(en) in 14 Tagen'}:{color:'green',text:'Keine belegte Änderung in 14 Tagen'};
+  function traffic(collection){
+
+  if(collection.checkStatus === 'changed'){
+
+    return {
+      color:'red',
+      text:
+        collection.changedCount +
+        ' Änderung(en) festgestellt'
+    };
   }
+
+  if(collection.checkStatus === 'error'){
+
+    return {
+      color:'yellow',
+      text:
+        'RIS-Prüfung fehlgeschlagen'
+    };
+  }
+
+  if(collection.checkStatus === 'complete'){
+
+    return {
+      color:'green',
+      text:
+        'Keine Änderungen festgestellt'
+    };
+  }
+
+  if(collection.checkStatus === 'empty'){
+
+    return {
+      color:'gray',
+      text:'Keine Vorschriften'
+    };
+  }
+
+  return {
+    color:'gray',
+    text:'Noch nicht geprüft'
+  };
+}
   function makeButton(text,action){const b=document.createElement('button');b.type='button';b.className='btn alt';b.textContent=text;b.addEventListener('click',action);return b}
   async function mutate(path,method,body){try{await request(path,method,body);await load()}catch(e){message(String(e.message||e),true)}}
   function render(){const host=el('personalCollectionGroups');host.replaceChildren();
