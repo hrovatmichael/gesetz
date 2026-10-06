@@ -191,7 +191,40 @@ const remove=makeButton(
 controls.append(remove)}
         else controls.append(makeButton('Entfernen',()=>mutate('/unassign','POST',{lawId:law.id,collectionId:group.id})));
         row.append(controls);contents.append(row)}
-      if(!group.inbox)contents.append(makeButton('Sammlung löschen',()=>{if(confirm('Sammlung wirklich löschen?'))mutate('/'+encodeURIComponent(group.id),'DELETE')}));
+      if(!group.inbox){
+
+  contents.append(
+    makeButton(
+      'RIS-Abgleich starten',
+      ()=>{
+        mutate(
+          '/check',
+          'POST',
+          {
+            collectionId: group.id
+          }
+        );
+      }
+    )
+  );
+
+  contents.append(
+    makeButton(
+      'Sammlung löschen',
+      ()=>{
+        if(confirm(
+          'Sammlung wirklich löschen?'
+        )){
+          mutate(
+            '/' + encodeURIComponent(group.id),
+            'DELETE'
+          );
+        }
+      }
+    )
+  );
+
+}
       box.append(contents);host.append(box)}
   }
   el('personalCollectionForm').addEventListener('submit',async e=>{e.preventDefault();const name=el('personalCollectionName').value.trim();if(!name)return;await mutate('','POST',{name});el('personalCollectionName').value=''});
