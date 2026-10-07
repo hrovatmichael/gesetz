@@ -350,12 +350,15 @@ margin-top:8px;
 ">
 
   <div>
+
     <a
       href="${candidate.risUrl}"
       target="_blank"
       rel="noopener noreferrer"
-      style="color:#8fc4ff;text-decoration:none;"
->
+      style{candidate.risNumber}
+    </div>
+
+  </div>
 
   <div style="
     text-align:right;
@@ -372,11 +375,11 @@ margin-top:8px;
       Letzte Änderung:
       ${candidate.changedAt || '-'}
     </div>
-
   </div>
 
 </div>
 `;
+`
 
         info.append(
           title,
