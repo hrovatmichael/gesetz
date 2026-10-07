@@ -382,10 +382,28 @@ gap:20px;
 </div>
 `;
 
-        info.append(
-          title,
-          meta
-        );
+       const validity = document.createElement('div');
+
+validity.style.marginTop = '8px';
+validity.style.fontSize = '13px';
+validity.style.fontWeight = '800';
+
+if (candidate.isActive === true) {
+  validity.textContent = 'In Kraft';
+  validity.style.color = '#39ff88';
+} else if (candidate.isActive === false) {
+  validity.textContent = 'Außer Kraft';
+  validity.style.color = '#ff4040';
+} else {
+  validity.textContent = 'Gültigkeit noch nicht geprüft';
+  validity.style.color = '#ffc857';
+}
+
+info.append(
+  title,
+  meta,
+  validity
+);
 
         take.type = 'button';
         take.className = 'btn alt';
