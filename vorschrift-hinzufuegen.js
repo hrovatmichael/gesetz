@@ -368,12 +368,15 @@ gap:20px;
   text-align:right;
   color:#a9bec9;
   font-size:11px;
+  white-space:nowrap;
   ">
-    Gültig ab:
-    ${candidate.effectiveFrom || '-'}
-    <br>
-    Letzte Änderung:
-    ${candidate.changedAt || '-'}
+    <div>
+      Gültig ab: ${candidate.effectiveFrom || '-'}
+    </div>
+
+    <div>
+      Letzte Änderung: ${candidate.changedAt || '-'}
+    </div>
   </div>
 
 </div>
