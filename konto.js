@@ -222,10 +222,55 @@ async function users(){
       }
     };
 
-    row.append(
-      title,
-      toggle
+    const remove = document.createElement('button');
+
+remove.type = 'button';
+remove.className = 'btn alt';
+remove.textContent = 'Löschen';
+remove.style.color = '#ff6060';
+
+remove.disabled =
+  user.id === window.rmUser?.id;
+
+remove.onclick = async () => {
+  if (!confirm(
+    'Benutzer "' + user.username +
+    '" wirklich dauerhaft löschen?'
+  )) {
+    return;
+  }
+
+  remove.disabled = true;
+  toggle.disabled = true;
+
+  try {
+    await api(
+      '/api/admin/users',
+      'DELETE',
+      {
+        id: user.id
+      }
     );
+
+    await users();
+
+    message('Benutzer wurde gelöscht.');
+  } catch (error) {
+    message(error.message);
+
+    remove.disabled =
+      user.id === window.rmUser?.id;
+
+    toggle.disabled =
+      user.id === window.rmUser?.id;
+  }
+};
+
+row.append(
+  title,
+  toggle,
+  remove
+);
 
     box.append(row);
   }
