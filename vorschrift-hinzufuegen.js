@@ -340,46 +340,14 @@
         meta.className =
           'lawAddMeta';
 
-        meta.innerHTML = `
-<div style="
-display:flex;
-justify-content:space-between;
-align-items:flex-start;
-gap:24px;
-margin-top:8px;
-">
-
-  <div>
-
-    <a
-      href="${candidate.risUrl}"
-      target="_blank"
-      rel="noopener noreferrer"
-      style{candidate.risNumber}
-    </div>
-
-  </div>
-
-  <div style="
-    text-align:right;
-    color:#a9bec9;
-    font-size:11px;
-    white-space:nowrap;
-  ">
-    <div>
-      Gültig ab:
-      ${candidate.effectiveFrom || '-'}
-    </div>
-
-    <div>
-      Letzte Änderung:
-      ${candidate.changedAt || '-'}
-    </div>
-  </div>
-
-</div>
-`;
-`
+        meta.textContent =
+[
+candidate.shortTitle,
+'Gesetzesnummer ' +
+candidate.risNumber
+]
+.filter(Boolean)
+.join(' · ');
 
         info.append(
           title,
