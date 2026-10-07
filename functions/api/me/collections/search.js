@@ -204,42 +204,72 @@ function candidate(document) {
 }
 
 async function search(term) {
-  const url = new URL(RIS_API);
-
-  url.searchParams.set('Applikation', 'BrKons');
-  url.searchParams.set('Titel', term);
-  url.searchParams.set('DokumenteProSeite', 'OneHundred');
-  url.searchParams.set('Seitennummer', '1');
-
-  const response = await fetch(url.toString(), {
-    headers: {
-      Accept: 'application/json'
-    }
-  });
-
-  if (!response.ok) {
-    throw new Error('RIS HTTP ' + response.status);
-  }
-
-  const json = await response.json();
-
-  if (json?.OgdSearchResult?.Error) {
-    throw new Error('RIS-Suche fehlgeschlagen');
-  }
-
   const map = new Map();
+  const MAX_PAGES = 20;
+  const seenPages = new Set();
 
-  for (const document of docs(json)) {
-    const result = candidate(document);
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const url = new URL(RIS_API);
 
-    if (result && !map.has(result.risNumber)) {
-      map.set(result.risNumber, result);
+    url.searchParams.set('Applikation', 'BrKons');
+    url.searchParams.set('Titel', term);
+    url.searchParams.set('DokumenteProSeite', 'OneHundred');
+    url.searchParams.set('Seitennummer', String(page));
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        Accept: 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        `RIS HTTP ${response.status} auf Seite ${page}`
+      );
+    }
+
+    const json = await response.json();
+
+    if (json?.OgdSearchResult?.Error) {
+      throw new Error(
+        `RIS-Suche fehlgeschlagen auf Seite ${page}`
+      );
+    }
+
+    const documents = docs(json);
+
+    if (documents.length === 0) {
+      return [...map.values()];
+    }
+
+    const signature = JSON.stringify(documents);
+
+    if (seenPages.has(signature)) {
+      throw new Error(
+        'RIS liefert wiederholt dieselbe Ergebnisseite.'
+      );
+    }
+
+    seenPages.add(signature);
+
+    for (const document of documents) {
+      const result = candidate(document);
+
+      if (result && !map.has(result.risNumber)) {
+        map.set(result.risNumber, result);
+      }
+    }
+
+    if (documents.length < 100) {
+      return [...map.values()];
     }
   }
 
-  return [...map.values()];
+  throw new Error(
+    'Die RIS-Suche überschreitet 20 Ergebnisseiten. ' +
+    'Bitte den Suchbegriff genauer eingeben.'
+  );
 }
-
 export async function onRequestPost({ request, env }) {
   if (!sameOrigin(request)) {
     return respond({ error: 'Ungültiger Ursprung.' }, 403);
