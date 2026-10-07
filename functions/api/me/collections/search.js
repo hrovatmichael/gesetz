@@ -34,9 +34,16 @@ function candidate(d) {
     ['Bundesrecht', 'Ausserkrafttretensdatum']
   ]));
 
-  const changedAt = clean(first(m, [
-    ['Allgemein', 'Geaendert']
-  ]));
+  const changedAt = clean(first(m,[
+  ['Allgemein','Geaendert']
+]));
+
+console.log(
+  'RIS-TREFFER',
+  risNumber,
+  title,
+  JSON.stringify(m,null,2)
+);
 
   const today = new Date()
     .toISOString()
