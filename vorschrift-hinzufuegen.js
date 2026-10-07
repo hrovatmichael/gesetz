@@ -346,14 +346,38 @@ ${clean(candidate.title)}
         meta.className =
           'lawAddMeta';
 
-        meta.textContent =
-[
-candidate.shortTitle,
-'Gesetzesnummer ' +
-candidate.risNumber
-]
-.filter(Boolean)
-.join(' · ');
+        meta.innerHTML = `
+<div style="
+display:flex;
+justify-content:space-between;
+align-items:flex-start;
+margin-top:6px;
+gap:20px;
+">
+
+  <div style="
+  color:#a9bec9;
+  font-size:11px;
+  ">
+    ${candidate.shortTitle || ''}
+    ·
+    Gesetzesnummer ${candidate.risNumber}
+  </div>
+
+  <div style="
+  text-align:right;
+  color:#a9bec9;
+  font-size:11px;
+  ">
+    Gültig ab:
+    ${candidate.effectiveFrom || '-'}
+    <br>
+    Letzte Änderung:
+    ${candidate.changedAt || '-'}
+  </div>
+
+</div>
+`;
 
         info.append(
           title,
