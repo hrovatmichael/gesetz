@@ -25,14 +25,13 @@ function candidate(d){
     ['Bundesrecht','BrKons','Kurztitel']
   ]));
 
-  const effectiveFrom=clean(first(m,[
-    ['Bundesrecht','BrKons','Inkrafttretensdatum'],
-    ['Bundesrecht','Inkrafttretensdatum']
-  ]));
+  const effectiveFrom = JSON.stringify(
+  m?.Bundesrecht?.BrKons || {}
+);
 
-  const changedAt=clean(first(m,[
-    ['Allgemein','Geaendert']
-  ]));
+const changedAt = JSON.stringify(
+  m?.Allgemein || {}
+);
 
   const u=new URL('https://www.ris.bka.gv.at/GeltendeFassung.wxe');
 
