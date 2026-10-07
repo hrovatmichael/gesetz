@@ -276,8 +276,19 @@
         select.append(option);
       }
 
-      button.disabled =
-        !rows.length;
+      if (!rows.length) {
+
+  const option =
+    document.createElement('option');
+
+  option.value = '';
+  option.textContent =
+    'Noch keiner Sammlung zugewiesen';
+
+  select.append(option);
+}
+
+button.disabled = false;
     }
 
     document.addEventListener(
@@ -356,17 +367,16 @@
 
           try {
 
-            await post(
-              '/add',
-              {
-                collectionId:
-                  select.value,
+           await post(
+  '/add',
+  {
+    collectionId:
+      select.value || null,
 
-                risNumber:
-                  candidate.risNumber
-              }
-            );
-
+    risNumber:
+      candidate.risNumber
+  }
+);
             document.dispatchEvent(
               new CustomEvent(
                 'rm-collections-changed'
