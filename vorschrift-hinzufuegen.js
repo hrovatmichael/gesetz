@@ -115,26 +115,30 @@
       }
 
       .lawAddCandidate{
-        display:grid;
-        grid-template-columns:
-          minmax(0,1fr)
-          auto;
+  display:grid;
+  grid-template-columns:
+    minmax(0,1fr)
+    250px;
 
-        gap:14px;
-        align-items:center;
+  gap:20px;
+  align-items:start;
 
-        padding:13px;
+  padding:16px;
 
-        border:1px solid #405564;
-        border-radius:11px;
+  border:1px solid #405564;
+  border-radius:11px;
 
-        background:#172733;
-      }
+  background:#172733;
+}
 
       .lawAddCandidate strong{
-        display:block;
-        font-size:13px;
-      }
+  display:block;
+  font-size:13px;
+  line-height:1.5;
+  white-space:normal;
+  word-break:break-word;
+  max-width:100%;
+}
 
       .lawAddMeta{
         margin-top:4px;
@@ -336,14 +340,43 @@
         meta.className =
           'lawAddMeta';
 
-        meta.textContent =
-          [
-            candidate.shortTitle,
-            'Gesetzesnummer ' +
-              candidate.risNumber
-          ]
-          .filter(Boolean)
-          .join(' · ');
+        meta.innerHTML = `
+<div style="
+display:flex;
+justify-content:space-between;
+align-items:flex-start;
+gap:24px;
+margin-top:8px;
+">
+
+  <div>
+    <a
+      href="${candidate.risUrl}"
+      target="_blank"
+      rel="noopener noreferrer"
+      style="color:#8fc4ff;text-decoration:none;"
+>
+
+  <div style="
+    text-align:right;
+    color:#a9bec9;
+    font-size:11px;
+    white-space:nowrap;
+  ">
+    <div>
+      Gültig ab:
+      ${candidate.effectiveFrom || '-'}
+    </div>
+
+    <div>
+      Letzte Änderung:
+      ${candidate.changedAt || '-'}
+    </div>
+
+  </div>
+
+</div>
+`;
 
         info.append(
           title,
