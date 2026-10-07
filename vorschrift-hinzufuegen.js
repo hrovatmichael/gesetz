@@ -478,11 +478,11 @@
               error
             );
 
-        } finally {
+       } finally {
 
-          button.disabled =
-            !select.value;
-        }
+  button.disabled = false;
+
+}
       };
 
     refresh().catch(error => {
