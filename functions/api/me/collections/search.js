@@ -170,4 +170,162 @@ function candidate(document) {
 
   const today = todayInAustria();
 
-  const isFuture
+    const isFuture =
+    Boolean(effectiveFrom) &&
+    effectiveFrom > today;
+
+  const isExpired =
+    Boolean(effectiveTo) &&
+    effectiveTo < today;
+
+  const url = new URL(
+    'https://www.ris.bka.gv.at/GeltendeFassung.wxe'
+  );
+
+  url.searchParams.set('Abfrage', 'Bundesnormen');
+  url.searchParams.set('Gesetzesnummer', risNumber);
+
+  return {
+    risNumber,
+    title:
+      title ||
+      shortTitle ||
+      `RIS-Vorschrift ${risNumber}`,
+    shortTitle,
+    risUrl: url.href,
+    effectiveFrom,
+    effectiveTo,
+    changedAt,
+    isActive: null,
+    isExpired,
+    isFuture,
+    validityStatus: 'unknown'
+  };
+}
+
+async function search(term) {
+  const url = new URL(RIS_API);
+
+  url.searchParams.set('Applikation', 'BrKons');
+  url.searchParams.set('Titel', term);
+  url.searchParams.set('DokumenteProSeite', 'OneHundred');
+  url.searchParams.set('Seitennummer', '1');
+
+  const response = await fetch(url.toString(), {
+    headers: {
+      Accept: 'application/json'
+    }
+  });
+
+  if (!response.ok) {
+    throw new Error('RIS HTTP ' + response.status);
+  }
+
+  const json = await response.json();
+
+  if (json?.OgdSearchResult?.Error) {
+    throw new Error('RIS-Suche fehlgeschlagen');
+  }
+
+  const map = new Map();
+
+  for (const document of docs(json)) {
+    const result = candidate(document);
+
+    if (result && !map.has(result.risNumber)) {
+      map.set(result.risNumber, result);
+    }
+  }
+
+  return [...map.values()];
+}
+
+export async function onRequestPost({ request, env }) {
+  if (!sameOrigin(request)) {
+    return respond({ error: 'Ungültiger Ursprung.' }, 403);
+  }
+
+  const auth = await requireUser(request, env);
+
+  if (auth.error) {
+    return auth.error;
+  }
+
+  const contentType =
+    request.headers.get('content-type') || '';
+
+  if (!contentType.toLowerCase().includes('application/json')) {
+    return respond({ error: 'JSON erforderlich.' }, 415);
+  }
+
+  let input;
+
+  try {
+    const raw = await request.text();
+
+    if (raw.length > 3000) {
+      return respond({ error: 'Eingabe zu groß.' }, 413);
+    }
+
+    input = JSON.parse(raw);
+  } catch {
+    return respond({ error: 'Ungültiges JSON.' }, 400);
+  }
+
+  const name = clean(input?.name);
+  const abbreviation = clean(input?.abbreviation);
+
+  if (
+    !name ||
+    name.length > 160 ||
+    abbreviation.length > 40
+  ) {
+    return respond({
+      error: 'Bitte einen gültigen Vorschriftentitel eingeben.'
+    }, 400);
+  }
+
+  try {
+    const map = new Map();
+
+    const terms = [
+      ...new Set([abbreviation, name].filter(Boolean))
+    ];
+
+    for (const term of terms) {
+      const results = await search(term);
+
+      for (const result of results) {
+        if (!map.has(result.risNumber)) {
+          map.set(result.risNumber, result);
+        }
+      }
+    }
+
+    const candidates = [...map.values()]
+      .sort((a, b) => {
+        const dateA = a.changedAt || a.effectiveFrom || '';
+        const dateB = b.changedAt || b.effectiveFrom || '';
+
+        if (dateA !== dateB) {
+          return dateB.localeCompare(dateA);
+        }
+
+        return a.title.localeCompare(b.title, 'de-AT');
+      })
+      .slice(0, 30);
+
+    return respond({
+      candidates,
+      count: candidates.length
+    });
+  } catch (error) {
+    console.error('RIS-Vorschriften suchen:', error);
+
+    return respond({
+      error:
+        'RIS-Suche fehlgeschlagen: ' +
+        String(error?.message || error)
+    }, 503);
+  }
+}
