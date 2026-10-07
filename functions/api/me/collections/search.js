@@ -84,7 +84,14 @@ function candidate(d) {
     isFuture
   };
 }
-async function search(term){const u=new URL(RIS_API);u.searchParams.set('Applikation','BrKons');u.searchParams.set('Titel',term);u.searchParams.set('DokumenteProSeite','OneHundred');u.searchParams.set('Seitennummer','1');const r=await fetch(u.toString(),{headers:{Accept:'application/json'}});if(!r.ok)throw Error('RIS HTTP '+r.status);const j=await r.json();if(j?.OgdSearchResult?.Error)throw Error('RIS-Suche fehlgeschlagen');const map=new Map();for(const d of docs(j)){const c=candidate(d);if(c&&!map.has(c.risNumber))map.set(c.risNumber,c)}return [...map.values()]}
+async function search(term){const u=new URL(RIS_API);u.searchParams.set('Applikation','BrKons');u.searchParams.set('Titel',term);u.searchParams.set('DokumenteProSeite','OneHundred');u.searchParams.set('Seitennummer','1');const r=await fetch(u.toString(),{headers:{Accept:'application/json'}});if(!r.ok)throw Error('RIS HTTP '+r.status);const j=await r.json();
+                           console.log(
+  JSON.stringify(
+    j,
+    null,
+    2
+  )
+); if(j?.OgdSearchResult?.Error)throw Error('RIS-Suche fehlgeschlagen');const map=new Map();for(const d of docs(j)){const c=candidate(d);if(c&&!map.has(c.risNumber))map.set(c.risNumber,c)}return [...map.values()]}
 export async function onRequestPost({request,env}){if(!sameOrigin(request))return respond({error:'Ungültiger Ursprung.'},403);const auth=await requireUser(request,env);if(auth.error)return auth.error;if(!(request.headers.get('content-type')||'').toLowerCase().includes('application/json'))return respond({error:'JSON erforderlich.'},415);let input;try{const raw=await request.text();if(raw.length>3000)return respond({error:'Eingabe zu groß.'},413);input=JSON.parse(raw)}catch{return respond({error:'Ungültiges JSON.'},400)}const name=clean(input?.name),abbreviation=clean(input?.abbreviation);if(!name||name.length>160||abbreviation.length>40)return respond({error:'Bitte einen gültigen Vorschriftentitel eingeben.'},400);try{const map=new Map();for(const term of [...new Set([abbreviation,name].filter(Boolean))])for(const c of await search(term))if(!map.has(c.risNumber))map.set(c.risNumber,c);const candidates = [...map.values()]
   .sort((a, b) => {
     if (a.isActive !== b.isActive) {
