@@ -202,7 +202,153 @@ function candidate(document) {
     validityStatus: 'unknown'
   };
 }
+async function checkValidity(risNumber) {
+  const today = todayInAustria();
 
+  async function loadPage(page, currentOnly) {
+    const url = new URL(RIS_API);
+
+    url.searchParams.set('Applikation', 'BrKons');
+    url.searchParams.set('Gesetzesnummer', risNumber);
+    url.searchParams.set('DokumenteProSeite', 'OneHundred');
+    url.searchParams.set('Seitennummer', String(page));
+
+    if (currentOnly) {
+      url.searchParams.set('FassungFassungVom', today);
+    }
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        Accept: 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error('RIS HTTP ' + response.status);
+    }
+
+    const json = await response.json();
+
+    if (json?.OgdSearchResult?.Error) {
+      throw new Error('RIS-Gültigkeitsprüfung fehlgeschlagen');
+    }
+
+    return docs(json);
+  }
+
+  const currentDocuments = await loadPage(1, true);
+
+  const currentMatches = currentDocuments.filter(
+    document => number(document) === risNumber
+  );
+
+  if (currentMatches.length > 0) {
+    return {
+      isActive: true,
+      validityStatus: 'active',
+      validityCheckedAt: today,
+      validityBasis: 'RIS-Fassung zum Prüfdatum'
+    };
+  }
+
+  let historicalCount = 0;
+  let allExpired = true;
+  let latestExpiry = '';
+  const seenPages = new Set();
+
+  for (let page = 1; page <= 20; page++) {
+    const documents = await loadPage(page, false);
+    const signature = JSON.stringify(documents);
+
+    if (documents.length > 0 && seenPages.has(signature)) {
+      break;
+    }
+
+    seenPages.add(signature);
+
+    for (const document of documents) {
+      if (number(document) !== risNumber) {
+        continue;
+      }
+
+      historicalCount++;
+
+      const metadata = document?.Data?.Metadaten || {};
+
+      const expiry = normalizeDate(first(metadata, [
+        ['Bundesrecht', 'BrKons', 'Ausserkrafttretensdatum'],
+        ['Bundesrecht', 'Ausserkrafttretensdatum']
+      ]));
+
+      if (!expiry || expiry >= today) {
+        allExpired = false;
+      }
+
+      if (expiry > latestExpiry) {
+        latestExpiry = expiry;
+      }
+    }
+
+    if (documents.length < 100) {
+      if (historicalCount > 0 && allExpired) {
+        return {
+          isActive: false,
+          validityStatus: 'expired',
+          validityCheckedAt: today,
+          repealDate: latestExpiry,
+          validityBasis:
+            'Keine aktuelle RIS-Fassung; alle gefundenen Dokumente abgelaufen'
+        };
+      }
+
+      break;
+    }
+  }
+
+  return {
+    isActive: null,
+    validityStatus: 'unknown',
+    validityCheckedAt: today
+  };
+}
+
+async function enrichValidity(candidates) {
+  const concurrency = 3;
+
+  for (
+    let index = 0;
+    index < candidates.length;
+    index += concurrency
+  ) {
+    const batch = candidates.slice(
+      index,
+      index + concurrency
+    );
+
+    await Promise.all(
+      batch.map(async candidate => {
+        try {
+          const validity = await checkValidity(
+            candidate.risNumber
+          );
+
+          Object.assign(candidate, validity);
+        } catch (error) {
+          candidate.isActive = null;
+          candidate.validityStatus = 'unknown';
+
+          console.error(
+            'RIS-Gültigkeitsprüfung:',
+            candidate.risNumber,
+            error
+          );
+        }
+      })
+    );
+  }
+
+  return candidates;
+}
 async function search(term) {
   const map = new Map();
   const MAX_PAGES = 20;
@@ -344,6 +490,8 @@ export async function onRequestPost({ request, env }) {
         return a.title.localeCompare(b.title, 'de-AT');
       })
       .slice(0, 30);
+
+       await enrichValidity(candidates);
 
     return respond({
       candidates,
