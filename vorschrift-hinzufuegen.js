@@ -198,9 +198,8 @@
           Ziel-Sammlung
 
           <select
-            id="lawAddCollection"
-            required>
-          </select>
+  id="lawAddCollection">
+</select>
         </label>
 
         <button
