@@ -257,39 +257,38 @@
 
     async function refresh() {
 
-      const rows =
-        await getCollections();
+  const rows =
+    await getCollections();
 
-      select.replaceChildren();
+  select.replaceChildren();
 
-      for (const collection of rows) {
-
-        const option =
-          document.createElement('option');
-
-        option.value =
-          collection.id;
-
-        option.textContent =
-          collection.name;
-
-        select.append(option);
-      }
-
-      if (!rows.length) {
-
-  const option =
+  const none =
     document.createElement('option');
 
-  option.value = '';
-  option.textContent =
-    'Noch keiner Sammlung zugewiesen';
+  none.value = '';
+  none.textContent =
+    'Nicht zuweisen';
 
-  select.append(option);
+  select.append(none);
+
+  for (const collection of rows) {
+
+    const option =
+      document.createElement('option');
+
+    option.value =
+      collection.id;
+
+    option.textContent =
+      collection.name;
+
+    select.append(option);
+  }
+
+  select.value = '';
+
+  button.disabled = false;
 }
-
-button.disabled = false;
-    }
 
     document.addEventListener(
       'rm-collections-changed',
