@@ -334,7 +334,7 @@
         const take =
           document.createElement('button');
 
-     title.innerHTML = `
+  title.innerHTML = `
 <div style="
 line-height:1.45;
 white-space:normal;
@@ -342,16 +342,7 @@ word-break:break-word;
 ">
 ${clean(candidate.title)}
 </div>
-
-<div style="
-margin-top:6px;
-font-size:11px;
-color:#a9bec9;
-">
-${candidate.shortTitle || ''} · Gesetzesnummer ${candidate.risNumber}
-</div>
 `;
-
         meta.className =
           'lawAddMeta';
 
