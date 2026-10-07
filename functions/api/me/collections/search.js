@@ -10,7 +10,19 @@ function number(d){const m=d?.Data?.Metadaten||{};const n=first(m,[['Bundesrecht
 function candidate(d) {
   const m = d?.Data?.Metadaten || {};
   const risNumber = number(d);
-
+if(
+  String(
+    first(m,[
+      ['Bundesrecht','Titel'],
+      ['Bundesrecht','Kurztitel'],
+      ['Bundesrecht','BrKons','Titel']
+    ])
+  ).toLowerCase().includes('brennbare')
+){
+  alert(
+    JSON.stringify(m,null,2)
+  );
+}
   if (!risNumber) return null;
 
   const title = clean(first(m, [
