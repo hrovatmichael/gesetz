@@ -752,8 +752,28 @@ center.style.width = '100%';
 
 center.append(name);
 
-if(law.risUrl){
+const shortTitle = String(
+  law.shortTitle || law.short_title || ''
+)
+  .replace(/<\/?br\s*\/?>/gi, ' ')
+  .replace(/<[^>]*>/g, ' ')
+  .replace(/\s+/g, ' ')
+  .trim();
 
+if (shortTitle) {
+  const shortName = document.createElement('div');
+
+  shortName.textContent = shortTitle;
+  shortName.style.marginTop = '4px';
+  shortName.style.fontSize = '12px';
+  shortName.style.fontWeight = '600';
+  shortName.style.color = 'inherit';
+  shortName.style.opacity = '0.85';
+
+  center.append(shortName);
+}
+
+if(law.risUrl){
   const link =
     document.createElement('a');
 
