@@ -108,7 +108,93 @@ panel.innerHTML=`
     </button>
 
   </form>
+<section
+  class="panel"
+  id="reportSettingsBox"
+  hidden>
 
+  <h2>Tagesberichte</h2>
+
+  <div class="controls">
+
+    <label class="field search">
+      Empfänger (eine E-Mail pro Zeile)
+
+      <textarea
+        id="reportRecipients"
+        style="height:120px"
+      ></textarea>
+    </label>
+
+    <label class="field">
+      Versandzeit
+
+      <select id="reportHour">
+        ${Array.from(
+          {length:24},
+          (_,i)=>
+            `<option value="${i}">
+              ${String(i).padStart(2,'0')}:00
+            </option>`
+        ).join('')}
+      </select>
+    </label>
+
+  </div>
+
+  <div
+    style="
+      display:flex;
+      gap:12px;
+      margin-top:14px;
+      flex-wrap:wrap;
+    "
+  >
+
+    <label>
+      <input
+        type="checkbox"
+        id="reportEnabled"
+      >
+      Automatischen Versand aktivieren
+    </label>
+
+    <label>
+      <input
+        type="checkbox"
+        id="reportWhenEmpty"
+      >
+      Auch ohne Änderungen senden
+    </label>
+
+  </div>
+
+  <div
+    style="
+      display:flex;
+      gap:12px;
+      margin-top:16px;
+      flex-wrap:wrap;
+    "
+  >
+
+    <button
+      class="btn"
+      id="saveReportSettings"
+      type="button">
+      Speichern
+    </button>
+
+    <button
+      class="btn alt"
+      id="sendReportNow"
+      type="button">
+      Bericht jetzt senden
+    </button>
+
+  </div>
+
+</section>
   <div
     id="userList"
     style="margin-top:15px">
@@ -154,7 +240,28 @@ function message(text){
 
   $('accountState').textContent=text;
 }
+async function loadReportSettings(){
 
+  const data =
+    await api(
+      '/api/me/report-settings'
+    );
+
+  $('reportRecipients').value =
+    (data.recipients || [])
+      .join('\n');
+
+  $('reportEnabled').checked =
+    !!data.dailyEnabled;
+
+  $('reportWhenEmpty').checked =
+    !!data.sendWhenEmpty;
+
+  $('reportHour').value =
+    String(
+      data.sendHour ?? 6
+    );
+}
 async function users(){
 
   const result=
@@ -300,17 +407,24 @@ async function refresh(){
     $('loginForm').hidden=!!user;
     $('logoutButton').hidden=!user;
 
-    $('adminBox').hidden=
-      !user ||
-      user.role!=='admin';
+ const isAdmin =
+  user &&
+  user.role === 'admin';
 
-    if(
-      user &&
-      user.role==='admin'
-    ){
-      await users();
-    }
+$('adminBox').hidden =
+  !isAdmin;
 
+$('reportSettingsBox').hidden =
+  !isAdmin;
+
+if (isAdmin) {
+
+  await users();
+
+  await loadReportSettings();
+
+}
+``
   }catch(error){
 
     message(
@@ -429,7 +543,51 @@ menu.onclick=()=>{
 
   document.querySelector('.top b')
     .textContent='Mein Konto';
+$('saveReportSettings')
+?.addEventListener(
+  'click',
+  async ()=>{
 
+    try{
+
+      const recipients =
+        $('reportRecipients')
+          .value
+          .split('\n')
+          .map(x=>x.trim())
+          .filter(Boolean);
+
+      await api(
+        '/api/me/report-settings',
+        'POST',
+        {
+          recipients,
+          dailyEnabled:
+            $('reportEnabled').checked,
+          sendWhenEmpty:
+            $('reportWhenEmpty').checked,
+          sendHour:
+            Number(
+              $('reportHour').value
+            )
+        }
+      );
+
+      message(
+        'Tagesbericht gespeichert.'
+      );
+
+    }catch(error){
+
+      message(
+        error.message
+      );
+
+    }
+
+  }
+);
+``
   refresh();
 };
 
