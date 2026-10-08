@@ -897,14 +897,7 @@ const warning =
       }
     }
 
-    return respond({
-      success: summary.errors === 0,
-      collectionId,
-      collectionName: collection.name,
-      checkedAt: new Date().toISOString(),
-      summary,
-      results
-    }, laws.length > 0 && summary.errors === laws.length ? 503 : 200);
+    const allFailed = laws.length > 0 && summary.errors === laws.length; const failedResults = results.filter( result => result.status === 'error' ); return respond({ success: summary.errors === 0, error: allFailed ? failedResults .map(result => result.title + ': ' + result.error ) .join(' | ') : null, collectionId, collectionName: collection.name, checkedAt: new Date().toISOString(), summary, results }, allFailed ? 503 : 200);
   } catch (error) {
     console.error('Sammlung mit RIS abgleichen:', error);
 
