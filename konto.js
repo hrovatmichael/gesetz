@@ -572,6 +572,47 @@ $('saveReportSettings')
             )
         }
       );
+      $('showReportPreview')
+?.addEventListener(
+  'click',
+  async () => {
+
+    try {
+
+      message(
+        'Bericht wird erstellt ...'
+      );
+
+      const result =
+        await api(
+          '/api/me/report-preview'
+        );
+
+      const box =
+        $('reportPreview');
+
+      box.style.display =
+        'block';
+
+      box.innerHTML =
+        '<h3>Vorschau Tagesbericht</h3><pre>' +
+        (result.report || 'Keine Daten vorhanden.') +
+        '</pre>';
+
+      message(
+        'Vorschau geladen.'
+      );
+
+    } catch (error) {
+
+      message(
+        error.message
+      );
+
+    }
+
+  }
+);
 $('sendReportNow')
 ?.addEventListener(
   'click',
