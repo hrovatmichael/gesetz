@@ -96,11 +96,12 @@ export async function onRequestGet({ request, env }) {
     );
 
     function statusForFrontend(status) {
-      if (status === 'baseline' || status === 'unchanged') return 'complete';
-      if (status === 'changed') return 'changed';
-      if (status === 'error') return 'error';
-      return 'pending';
-    }
+  if (status === 'baseline') return 'baseline';
+  if (status === 'unchanged') return 'complete';
+  if (status === 'changed') return 'changed';
+  if (status === 'error') return 'error';
+  return 'pending';
+}
 
     function formatCollectionLaw(row) {
       return {
