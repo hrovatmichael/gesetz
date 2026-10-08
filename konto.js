@@ -572,7 +572,39 @@ $('saveReportSettings')
             )
         }
       );
+$('sendReportNow')
+?.addEventListener(
+  'click',
+  async ()=>{
 
+    try{
+
+      message(
+        'Bericht wird versendet ...'
+      );
+
+      const result =
+        await api(
+          '/api/me/report-send',
+          'POST'
+        );
+
+      message(
+        'Bericht erfolgreich versendet.'
+      );
+
+      console.log(result);
+
+    }catch(error){
+
+      message(
+        error.message
+      );
+
+    }
+
+  }
+);
       message(
         'Tagesbericht gespeichert.'
       );
