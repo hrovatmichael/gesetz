@@ -208,14 +208,7 @@ export async function onRequestPost({
 
     await env.COLLECTIONS_DB
       .prepare(`
-        INSERT INTO report_settings (
-          user_id,
-          recipients,
-          daily_enabled,
-          send_hour,
-          send_when_empty
-        )
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO report
 
         ON CONFLICT(user_id)
         DO UPDATE SET
@@ -226,14 +219,15 @@ export async function onRequestPost({
           updated_at = CURRENT_TIMESTAMP
       `)
       .bind(
-        auth.me.id,
-        JSON.stringify(
-          recipients
-        ),
-        dailyEnabled ? 1 : 0,
-        sendHour,
-        sendWhenEmpty ? 1 : 0
-      )
+  auth.me.id,
+  recipients[0],
+  JSON.stringify(
+    recipients
+  ),
+  dailyEnabled ? 1 : 0,
+  sendHour,
+  sendWhenEmpty ? 1 : 0
+)
       .run();
 
     return json({
