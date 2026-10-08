@@ -32,6 +32,7 @@ export async function onRequestGet({ request, env }) {
         pcl.collection_id,
         l.id,
         l.title,
+        l.short_title,
         l.ris_number,
         l.ris_url,
         latest.checked_at,
@@ -61,6 +62,7 @@ export async function onRequestGet({ request, env }) {
       SELECT
         l.id,
         l.title,
+        l.short_title,
         l.ris_number,
         l.ris_url,
         l.last_checked_at,
@@ -107,6 +109,7 @@ export async function onRequestGet({ request, env }) {
       return {
         id: row.id,
         title: row.title,
+        shortTitle: row.short_title || '',
         risNumber: row.ris_number,
         risUrl: row.ris_url,
         checkedAt: row.checked_at,
@@ -120,6 +123,7 @@ export async function onRequestGet({ request, env }) {
       return {
         id: row.id,
         title: row.title,
+        shortTitle: row.short_title || '',
         risNumber: row.ris_number,
         risUrl: row.ris_url,
         checkedAt: row.last_checked_at,
