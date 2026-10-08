@@ -393,13 +393,11 @@ async function loadReportData(
       pci.detected_at DESC,
       pci.id DESC
   `)
-    .bind(
+       .bind(
       userId,
       since
     )
     .all();
-      )
-      .all();
 
   const checks =
     (checksResult.results || [])
