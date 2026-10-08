@@ -349,8 +349,10 @@ let missingTextCount = 0;
     const documentUrl =
   safeRisUrl(document.documentUrl);
 
-const textResult =
-  await loadRisDocumentText(documentUrl);
+const textResult = {
+  text: null,
+  error: null
+};
 
 const remainingTextLength =
   Math.max(
