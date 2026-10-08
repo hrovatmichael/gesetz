@@ -139,66 +139,16 @@ function changeLabel(type) {
   return 'Unbekannte Änderung';
 }
 
-function bytesToBase64(bytes) {
-  const chunkSize = 8192;
-  let binary = '';
-
-  for (
-    let offset = 0;
-    offset < bytes.length;
-    offset += chunkSize
-  ) {
-    const chunk = bytes.subarray(
-      offset,
-      offset + chunkSize
-    );
-
-    binary += String.fromCharCode(...chunk);
-  }
-
-  return btoa(binary);
-}
-
-function base64UrlEncode(value) {
-  const bytes =
-    new TextEncoder().encode(
-      String(value)
-    );
-
-  return bytesToBase64(bytes)
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_')
-    .replace(/=+$/g, '');
-}
-
-function encodeSubject(value) {
-  const bytes =
-    new TextEncoder().encode(
-      String(value)
-    );
-
-  return (
-    '=?UTF-8?B?' +
-    bytesToBase64(bytes) +
-    '?='
-  );
-}
-
-
-
 async function sendEmail({
   env,
   recipients,
   subject,
   html
 }) {
-
   if (!env.RESEND_API_KEY) {
-
     throw new Error(
       'Cloudflare Secret RESEND_API_KEY fehlt.'
     );
-
   }
 
   const response = await fetch(
@@ -214,31 +164,35 @@ async function sendEmail({
       body: JSON.stringify({
         from:
           'Rechtsmonitor <onboarding@resend.dev>',
-        to:
-          recipients,
+        to: recipients,
         subject,
         html
       })
     }
   );
 
-  const result =
-    await response.json();
+  const responseText =
+    await response.text();
+
+  let result;
+
+  try {
+    result = JSON.parse(responseText);
+  } catch {
+    result = {};
+  }
 
   if (!response.ok) {
-
     throw new Error(
       result?.message ||
-      result?.error ||
-      'Resend Versand fehlgeschlagen.'
+      result?.error?.message ||
+      responseText ||
+      'Resend-Versand fehlgeschlagen.'
     );
-
   }
 
   return result;
 }
-
-
 
 async function loadReportData(
   db,
@@ -284,37 +238,37 @@ async function loadReportData(
       )
       .all();
 
- const changesResult =
-  await db.prepare(`
-    SELECT
-      pci.id,
-      pci.check_id,
-      pci.collection_id,
-      pci.law_id,
-      pci.change_type,
-      pci.provision_key,
-      pci.detected_at,
-      pc.name AS collection_name,
-      rl.title AS law_title,
-      rl.ris_number,
-      rl.ris_url
-    FROM personal_law_change_items AS pci
-    JOIN personal_collections AS pc
-      ON pc.id = pci.collection_id
-     AND pc.user_id = pci.user_id
-    JOIN ris_laws AS rl
-      ON rl.id = pci.law_id
-    WHERE pci.user_id = ?
-      AND pci.detected_at >= ?
-    ORDER BY
-      pci.detected_at DESC,
-      pci.id DESC
-  `)
-       .bind(
-      userId,
-      since
-    )
-    .all();
+  const changesResult =
+    await db.prepare(`
+      SELECT
+        pci.id,
+        pci.check_id,
+        pci.collection_id,
+        pci.law_id,
+        pci.change_type,
+        pci.provision_key,
+        pci.detected_at,
+        pc.name AS collection_name,
+        rl.title AS law_title,
+        rl.ris_number,
+        rl.ris_url
+      FROM personal_law_change_items AS pci
+      JOIN personal_collections AS pc
+        ON pc.id = pci.collection_id
+       AND pc.user_id = pci.user_id
+      JOIN ris_laws AS rl
+        ON rl.id = pci.law_id
+      WHERE pci.user_id = ?
+        AND pci.detected_at >= ?
+      ORDER BY
+        pci.detected_at DESC,
+        pci.id DESC
+    `)
+      .bind(
+        userId,
+        since
+      )
+      .all();
 
   const checks =
     (checksResult.results || [])
@@ -334,10 +288,10 @@ async function loadReportData(
         )
       );
 
-  const collections =
+  const collectionIds =
     new Set();
 
-  const laws =
+  const lawIds =
     new Set();
 
   const summary = {
@@ -355,11 +309,11 @@ async function loadReportData(
   };
 
   for (const check of checks) {
-    collections.add(
+    collectionIds.add(
       check.collection_id
     );
 
-    laws.add(
+    lawIds.add(
       check.law_id
     );
 
@@ -381,10 +335,10 @@ async function loadReportData(
   }
 
   summary.collections =
-    collections.size;
+    collectionIds.size;
 
   summary.laws =
-    laws.size;
+    lawIds.size;
 
   for (const change of changes) {
     if (change.change_type === 'added') {
@@ -401,30 +355,23 @@ async function loadReportData(
   }
 
   return {
-    todayKey,
     checks,
     changes,
     summary
   };
 }
 
-function buildReportHtml(report) {
-  const generatedAt =
-    formatViennaDateTime(
-      new Date().toISOString()
-    );
+function buildChangedSections(changes) {
+  const groups = new Map();
 
-  const changedLaws =
-    new Map();
-
-  for (const change of report.changes) {
+  for (const change of changes) {
     const key =
       String(change.check_id) +
       '|' +
       String(change.law_id);
 
-    if (!changedLaws.has(key)) {
-      changedLaws.set(key, {
+    if (!groups.has(key)) {
+      groups.set(key, {
         title:
           cleanText(
             change.law_title
@@ -453,141 +400,144 @@ function buildReportHtml(report) {
       });
     }
 
-    changedLaws
-      .get(key)
-      .items
-      .push({
-        type:
-          change.change_type,
+    groups.get(key).items.push({
+      type:
+        change.change_type,
 
-        provisionKey:
-          cleanText(
-            change.provision_key
-          ),
-
-        provisionTitle:
-  cleanText(
-    change.provision_key
-  )
-      });
+      provisionKey:
+        cleanText(
+          change.provision_key
+        )
+    });
   }
 
-  const changedSections =
-    [...changedLaws.values()]
-      .map(group => {
-        const items =
-          group.items
-            .map(item => `
-              <li style="margin-bottom:6px">
-                <strong>
-                  ${escapeHtml(
-                    changeLabel(
-                      item.type
-                    )
-                  )}
-                </strong>:
+  return [...groups.values()]
+    .map(group => {
+      const items =
+        group.items
+          .map(item => `
+            <li style="margin-bottom:6px">
+              <strong>
                 ${escapeHtml(
-                  item.provisionKey ||
-                  item.provisionTitle ||
-                  'Unbekannte Bestimmung'
+                  changeLabel(item.type)
                 )}
-              </li>
-            `)
-            .join('');
-
-        const risLink =
-          /^https:\/\//i.test(
-            group.risUrl
-          )
-            ? `
-              <p>
-                ${escapeHtml(group.risUrl)}
-                  Vorschrift im RIS öffnen
-                </a>
-              </p>
-            `
-            : '';
-
-        return `
-          <div style="
-            margin-top:18px;
-            padding:16px;
-            border:1px solid #d8e1e5;
-            border-radius:10px;
-            background:#f8fafb;
-          ">
-            <h3 style="margin:0 0 8px">
+              </strong>:
               ${escapeHtml(
-                group.title
+                item.provisionKey ||
+                'Unbekannte Bestimmung'
               )}
-            </h3>
+            </li>
+          `)
+          .join('');
 
-            <p style="margin:4px 0">
-              <strong>Sammlung:</strong>
-              ${escapeHtml(
-                group.collectionName
-              )}
+      const risLink =
+        /^https:\/\//i.test(group.risUrl)
+          ? `
+            <p style="margin-top:12px">
+              ${escapeHtml(group.risUrl)}
+                Vorschrift im RIS öffnen
+              </a>
             </p>
+          `
+          : '';
 
-            <p style="margin:4px 0">
-              <strong>RIS-Nummer:</strong>
-              ${escapeHtml(
-                group.risNumber ||
-                'Keine Angabe'
-              )}
-            </p>
+      return `
+        <div style="
+          margin-top:18px;
+          padding:16px;
+          border:1px solid #d8e1e5;
+          border-radius:10px;
+          background:#f8fafb;
+        ">
+          <h3 style="margin:0 0 8px">
+            ${escapeHtml(group.title)}
+          </h3>
 
-            <p style="margin:4px 0 10px">
-              <strong>Erkannt:</strong>
-              ${escapeHtml(
-                formatViennaDateTime(
-                  group.detectedAt
+          <p style="margin:4px 0">
+            <strong>Sammlung:</strong>
+            ${escapeHtml(
+              group.collectionName ||
+              'Keine Angabe'
+            )}
+          </p>
+
+          <p style="margin:4px 0">
+            <strong>RIS-Nummer:</strong>
+            ${escapeHtml(
+              group.risNumber ||
+              'Keine Angabe'
+            )}
+          </p>
+
+          <p style="margin:4px 0 10px">
+            <strong>Erkannt:</strong>
+            ${escapeHtml(
+              formatViennaDateTime(
+                group.detectedAt
+              )
+            )}
+          </p>
+
+          <ul>
+            ${items}
+          </ul>
+
+          ${risLink}
+        </div>
+      `;
+    })
+    .join('');
+}
+
+function buildErrorList(checks) {
+  return checks
+    .filter(check =>
+      check.status === 'error'
+    )
+    .map(check => `
+      <li>
+        ${escapeHtml(
+          cleanText(
+            check.law_title
+          ) ||
+          'Unbekannte Vorschrift'
+        )}
+
+        ${
+          check.error_message
+            ? ': ' +
+              escapeHtml(
+                cleanText(
+                  check.error_message
                 )
-              )}
-            </p>
+              )
+            : ''
+        }
+      </li>
+    `)
+    .join('');
+}
 
-            <ul>
-              ${items}
-            </ul>
+function buildReportHtml(report) {
+  const generatedAt =
+    formatViennaDateTime(
+      new Date().toISOString()
+    );
 
-            ${risLink}
-          </div>
-        `;
-      })
-      .join('');
+  const changedSections =
+    buildChangedSections(
+      report.changes
+    );
 
-  const errors =
-    report.checks
-      .filter(check =>
-        check.status === 'error'
-      )
-      .map(check => `
-        <li>
-          ${escapeHtml(
-            cleanText(
-              check.law_title
-            )
-          )}
-
-          ${
-            check.error_message
-              ? ': ' +
-                escapeHtml(
-                  cleanText(
-                    check.error_message
-                  )
-                )
-              : ''
-          }
-        </li>
-      `)
-      .join('');
+  const errorList =
+    buildErrorList(
+      report.checks
+    );
 
   return `
     <!doctype html>
 
     <html lang="de">
-
       <head>
         <meta charset="utf-8">
       </head>
@@ -599,7 +549,6 @@ function buildReportHtml(report) {
         color:#142a3a;
         font-family:Arial,sans-serif;
       ">
-
         <div style="
           max-width:760px;
           margin:auto;
@@ -608,16 +557,13 @@ function buildReportHtml(report) {
           border:1px solid #dce5e9;
           border-radius:14px;
         ">
-
           <h1 style="margin-top:0">
             Rechtsmonitor Österreich
           </h1>
 
           <p>
             Tagesbericht vom
-            ${escapeHtml(
-              generatedAt
-            )}
+            ${escapeHtml(generatedAt)}
           </p>
 
           <table
@@ -629,7 +575,6 @@ function buildReportHtml(report) {
               margin-top:20px;
             "
           >
-
             <tr>
               <td style="border:1px solid #dce5e9">
                 Sammlungen geprüft
@@ -692,6 +637,36 @@ function buildReportHtml(report) {
 
             <tr>
               <td style="border:1px solid #dce5e9">
+                Neu hinzugefügt
+              </td>
+
+              <td style="border:1px solid #dce5e9">
+                ${report.summary.added}
+              </td>
+            </tr>
+
+            <tr>
+              <td style="border:1px solid #dce5e9">
+                Entfernt
+              </td>
+
+              <td style="border:1px solid #dce5e9">
+                ${report.summary.removed}
+              </td>
+            </tr>
+
+            <tr>
+              <td style="border:1px solid #dce5e9">
+                Geändert
+              </td>
+
+              <td style="border:1px solid #dce5e9">
+                ${report.summary.modified}
+              </td>
+            </tr>
+
+            <tr>
+              <td style="border:1px solid #dce5e9">
                 Prüfungsfehler
               </td>
 
@@ -699,7 +674,6 @@ function buildReportHtml(report) {
                 ${report.summary.errors}
               </td>
             </tr>
-
           </table>
 
           ${
@@ -725,14 +699,14 @@ function buildReportHtml(report) {
           }
 
           ${
-            errors
+            errorList
               ? `
                 <h2 style="margin-top:26px">
                   Prüfungsfehler
                 </h2>
 
                 <ul>
-                  ${errors}
+                  ${errorList}
                 </ul>
               `
               : ''
@@ -743,16 +717,13 @@ function buildReportHtml(report) {
             color:#667b87;
             font-size:12px;
           ">
-            Dieser Bericht wurde automatisch vom
-            Rechtsmonitor Österreich erstellt.
-            Verbindlich ist der jeweilige Originaltext
-            im Rechtsinformationssystem des Bundes.
+            Dieser Bericht wurde vom Rechtsmonitor
+            Österreich erstellt. Verbindlich ist der
+            jeweilige Originaltext im
+            Rechtsinformationssystem des Bundes.
           </p>
-
         </div>
-
       </body>
-
     </html>
   `;
 }
@@ -870,8 +841,8 @@ export async function onRequestPost({
         report
       );
 
-    const gmailResult =
-  await sendEmail({
+    const resendResult =
+      await sendEmail({
         env,
         recipients,
         subject,
@@ -881,8 +852,8 @@ export async function onRequestPost({
     return json({
       success: true,
       recipients,
-      gmailMessageId:
-        gmailResult.id || null,
+      resendMessageId:
+        resendResult.id || null,
       summary:
         report.summary
     });
