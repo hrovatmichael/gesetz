@@ -206,29 +206,36 @@ export async function onRequestPost({
 
   try {
 
-    await env.COLLECTIONS_DB
-      .prepare(`
-        INSERT INTO report
+   await env.COLLECTIONS_DB
+  .prepare(`
+    INSERT INTO report_settings (
+      user_id,
+      email,
+      recipients,
+      daily_enabled,
+      send_hour,
+      send_when_empty
+    )
+    VALUES (?, ?, ?, ?, ?, ?)
 
-        ON CONFLICT(user_id)
-        DO UPDATE SET
-          recipients = excluded.recipients,
-          daily_enabled = excluded.daily_enabled,
-          send_hour = excluded.send_hour,
-          send_when_empty = excluded.send_when_empty,
-          updated_at = CURRENT_TIMESTAMP
-      `)
-      .bind(
-  auth.me.id,
-  recipients[0],
-  JSON.stringify(
-    recipients
-  ),
-  dailyEnabled ? 1 : 0,
-  sendHour,
-  sendWhenEmpty ? 1 : 0
-)
-      .run();
+    ON CONFLICT(user_id)
+    DO UPDATE SET
+      email = excluded.email,
+      recipients = excluded.recipients,
+      daily_enabled = excluded.daily_enabled,
+      send_hour = excluded.send_hour,
+      send_when_empty = excluded.send_when_empty,
+      updated_at = CURRENT_TIMESTAMP
+  `)
+  .bind(
+    auth.me.id,
+    recipients[0],
+    JSON.stringify(recipients),
+    dailyEnabled ? 1 : 0,
+    sendHour,
+    sendWhenEmpty ? 1 : 0
+  )
+  .run();
 
     return json({
       success: true,
