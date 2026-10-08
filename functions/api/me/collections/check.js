@@ -443,7 +443,7 @@ textError:
  const snapshot = {
   schemaVersion: 3,
   snapshotType: 'ris-text',
-  risNumberconst warning
+  risNumber,
   limitedToFirstPage:
     sourceDocuments.length === 100,
   totalStoredTextLength,
