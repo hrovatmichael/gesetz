@@ -238,73 +238,7 @@ async function sendEmail({
   return result;
 }
 
-  const sender = String(
-    env.GMAIL_SENDER || ''
-  ).trim();
 
-  if (!validEmail(sender)) {
-    throw new Error(
-      'Cloudflare Secret GMAIL_SENDER fehlt oder ist ungültig.'
-    );
-  }
-
-  const token =
-    await gmailAccessToken(env);
-
-  const mimeMessage = [
-    `From: Rechtsmonitor Österreich <${sender}>`,
-    `To: ${recipients.join(', ')}`,
-    `Subject: ${encodeSubject(subject)}`,
-    'MIME-Version: 1.0',
-    'Content-Type: text/html; charset=UTF-8',
-    'Content-Transfer-Encoding: 8bit',
-    '',
-    html
-  ].join('\r\n');
-
-  const response = await fetch(
-    'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
-    {
-      method: 'POST',
-      headers: {
-        Authorization:
-          `Bearer ${token}`,
-        'Content-Type':
-          'application/json'
-      },
-      body: JSON.stringify({
-        raw:
-          base64UrlEncode(
-            mimeMessage
-          )
-      })
-    }
-  );
-
-  const responseText =
-    await response.text();
-
-  let result;
-
-  try {
-    result = JSON.parse(responseText);
-  } catch {
-    result = {};
-  }
-
-  if (!response.ok) {
-    throw new Error(
-      'Gmail-Versand fehlgeschlagen: ' +
-      (
-        result?.error?.message ||
-        responseText ||
-        'HTTP ' + response.status
-      )
-    );
-  }
-
-  return result;
-}
 
 async function loadReportData(
   db,
