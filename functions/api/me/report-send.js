@@ -551,9 +551,9 @@ function buildReportHtml(report) {
           ),
 
         provisionTitle:
-          cleanText(
-            change.provision_title
-          )
+  cleanText(
+    change.provision_key
+  )
       });
   }
 
