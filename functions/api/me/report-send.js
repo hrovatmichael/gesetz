@@ -378,7 +378,6 @@ async function loadReportData(
   pci.change_type,
   pci.provision_key,
   pci.detected_at,
-
         pc.name AS collection_name,
         rl.title AS law_title,
         rl.ris_number,
