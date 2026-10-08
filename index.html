@@ -614,24 +614,32 @@ RIS-geprüfte Vorschriften zuerst im Eingangskorb ablegen, dann Sammlungen zuord
     };
   }
 
-  if(collection.checkStatus === 'error'){
+  if(collection.checkStatus === 'baseline'){
 
-    return {
-      color:'yellow',
-      text:
-        'RIS-Prüfung fehlgeschlagen'
-    };
-  }
+  return {
+    color:'yellow',
+    text:
+      'Erstprüfung abgeschlossen · Referenzstand gespeichert'
+  };
+}
 
-  if(collection.checkStatus === 'complete'){
+if(collection.checkStatus === 'error'){
 
-    return {
-      color:'green',
-      text:
-        'Keine Änderungen festgestellt'
-    };
-  }
+  return {
+    color:'yellow',
+    text:
+      'RIS-Prüfung fehlgeschlagen'
+  };
+}
 
+if(collection.checkStatus === 'complete'){
+
+  return {
+    color:'green',
+    text:
+      'Keine Änderungen festgestellt'
+  };
+}
   if(collection.checkStatus === 'empty'){
 
     return {
@@ -705,6 +713,8 @@ indicator.className =
   (
     law.checkStatus === 'changed'
       ? 'red'
+      : law.checkStatus === 'baseline'
+      ? 'yellow'
       : law.checkStatus === 'error'
       ? 'yellow'
       : law.checkStatus === 'complete'
@@ -715,6 +725,8 @@ indicator.className =
 indicator.title =
   law.checkStatus === 'changed'
     ? 'Änderung festgestellt'
+    : law.checkStatus === 'baseline'
+    ? 'Erstprüfung abgeschlossen · Referenzstand gespeichert'
     : law.checkStatus === 'error'
     ? 'Prüfung fehlgeschlagen'
     : law.checkStatus === 'complete'
