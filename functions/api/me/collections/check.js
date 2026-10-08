@@ -3,6 +3,14 @@ import { requireUser, sameOrigin } from '../../../_lib/auth.js';
 const RIS_API = 'https://data.bka.gv.at/ris/api/v2.6/Bundesrecht';
 const MAX_LAWS_PER_RUN = 100;
 
+const RIS_DOCUMENT_HOSTS = new Set([
+  'www.ris.bka.gv.at',
+  'ris.bka.gv.at',
+  'ogd.ris.bka.gv.at'
+]);
+
+const MAX_TEXT_PER_PROVISION = 60000;
+
 const HEADERS = {
   'Content-Type': 'application/json; charset=utf-8',
   'Cache-Control': 'no-store',
@@ -136,7 +144,118 @@ function provisionKeyFrom(document, fallbackIndex) {
 
   return documentId || `Dokument ${fallbackIndex + 1}`;
 }
+function safeRisUrl(value) {
+  try {
+    const url = new URL(
+      String(value || ''),
+      'https://www.ris.bka.gv.at'
+    );
 
+    if (
+      url.protocol !== 'https:' ||
+      !RIS_DOCUMENT_HOSTS.has(
+        url.hostname.toLowerCase()
+      )
+    ) {
+      return '';
+    }
+
+    return url.href;
+  } catch {
+    return '';
+  }
+}
+
+function decodeHtmlEntities(value) {
+  return String(value || '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'");
+}
+
+function documentTextFromHtml(value) {
+  return decodeHtmlEntities(
+    String(value || '')
+      .replace(
+        /<script\b[^>]*>[\s\S]*?<\/script>/gi,
+        ' '
+      )
+      .replace(
+        /<style\b[^>]*>[\s\S]*?<\/style>/gi,
+        ' '
+      )
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(
+        /<\/(p|div|li|tr|h[1-6]|section|article)>/gi,
+        '\n'
+      )
+      .replace(/<[^>]+>/g, ' ')
+  )
+    .replace(/\u00a0/g, ' ')
+    .replace(/[ \t]+/g, ' ')
+    .replace(/\s*\n\s*/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+async function loadRisDocumentText(value) {
+  const url = safeRisUrl(value);
+
+  if (!url) {
+    return {
+      text: null,
+      error: 'Kein gültiger RIS-Dokumentlink'
+    };
+  }
+
+  try {
+    const response = await fetch(url, {
+      headers: {
+        Accept:
+          'text/html,application/xhtml+xml,application/xml;q=0.9,text/plain;q=0.8'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(
+        'RIS-Dokument HTTP ' + response.status
+      );
+    }
+
+    const raw = await response.text();
+
+    const contentType =
+      response.headers.get('content-type') || '';
+
+    const text = (
+      /html|xml/i.test(contentType) ||
+      /<[^>]+>/.test(raw.slice(0, 500))
+        ? documentTextFromHtml(raw)
+        : normalizeText(raw)
+    ).slice(0, MAX_TEXT_PER_PROVISION);
+
+    if (!text) {
+      throw new Error(
+        'RIS-Dokument enthält keinen lesbaren Text'
+      );
+    }
+
+    return {
+      text,
+      error: null
+    };
+  } catch (error) {
+    return {
+      text: null,
+      error: String(
+        error?.message || error
+      )
+    };
+  }
+}
 function canonicalDocument(document, index) {
   const metadata = document?.Data?.Metadaten || {};
 
@@ -222,23 +341,50 @@ async function buildMetadataSnapshot(risNumber) {
       ? document.key
       : `${document.key} [${document.documentId || duplicateNumber + 1}]`;
 
-    const metadataState = {
-      documentId: document.documentId || null,
-      documentUrl: document.documentUrl || null,
-      title: document.title || null,
-      shortInformation: document.shortInformation || null,
-      effectiveFrom: document.effectiveFrom || null,
-      effectiveTo: document.effectiveTo || null,
-      publishedAt: document.publishedAt || null,
-      changedAt: document.changedAt || null
-    };
+    const documentUrl =
+  safeRisUrl(document.documentUrl);
 
-    provisions[key] = {
-      key,
-      title: document.title || document.shortInformation || key,
-      hash: await sha256(stableStringify(metadataState)),
-      metadata: metadataState
-    };
+const textResult =
+  await loadRisDocumentText(documentUrl);
+
+const metadataState = {
+  documentId:
+    document.documentId || null,
+  documentUrl:
+    documentUrl || null,
+  title:
+    document.title || null,
+  shortInformation:
+    document.shortInformation || null,
+  effectiveFrom:
+    document.effectiveFrom || null,
+  effectiveTo:
+    document.effectiveTo || null,
+  publishedAt:
+    document.publishedAt || null,
+  changedAt:
+    document.changedAt || null
+};
+
+const comparisonState = {
+  metadata: metadataState,
+  text: textResult.text
+};
+
+provisions[key] = {
+  key,
+  title:
+    document.title ||
+    document.shortInformation ||
+    key,
+  hash:
+    await sha256(
+      stableStringify(comparisonState)
+    ),
+  text: textResult.text,
+  textError: textResult.error,
+  metadata: metadataState
+};
 
     dates.push(
       document.changedAt,
@@ -248,13 +394,14 @@ async function buildMetadataSnapshot(risNumber) {
     );
   }
 
-  const snapshot = {
-    schemaVersion: 2,
-    snapshotType: 'ris-metadata',
-    risNumber,
-    limitedToFirstPage: sourceDocuments.length === 100,
-    provisions
-  };
+ const snapshot = {
+  schemaVersion: 3,
+  snapshotType: 'ris-text',
+  risNumber,
+  limitedToFirstPage:
+    sourceDocuments.length === 100,
+  provisions
+};
 
   const snapshotJson = JSON.stringify(snapshot);
 
@@ -292,30 +439,39 @@ function compareSnapshots(previousSnapshot, currentSnapshot) {
     const after = current[key];
 
     if (!before && after) {
-      changes.push({
-        changeType: 'added',
-        provisionKey: key,
-        provisionTitle: after.title || key,
-        previousHash: null,
-        currentHash: after.hash
-      });
-    } else if (before && !after) {
-      changes.push({
-        changeType: 'removed',
-        provisionKey: key,
-        provisionTitle: before.title || key,
-        previousHash: before.hash,
-        currentHash: null
-      });
-    } else if (before.hash !== after.hash) {
-      changes.push({
-        changeType: 'modified',
-        provisionKey: key,
-        provisionTitle: after.title || before.title || key,
-        previousHash: before.hash,
-        currentHash: after.hash
-      });
-    }
+  changes.push({
+    changeType: 'added',
+    provisionKey: key,
+    provisionTitle: after.title || key,
+    previousHash: null,
+    currentHash: after.hash,
+    previousText: null,
+    currentText: after.text || null
+  });
+} else if (before && !after) {
+  changes.push({
+    changeType: 'removed',
+    provisionKey: key,
+    provisionTitle: before.title || key,
+    previousHash: before.hash,
+    currentHash: null,
+    previousText: before.text || null,
+    currentText: null
+  });
+} else if (before.hash !== after.hash) {
+  changes.push({
+    changeType: 'modified',
+    provisionKey: key,
+    provisionTitle:
+      after.title ||
+      before.title ||
+      key,
+    previousHash: before.hash,
+    currentHash: after.hash,
+    previousText: before.text || null,
+    currentText: after.text || null
+  });
+}
   }
 
   return changes;
@@ -434,19 +590,21 @@ async function saveSuccessfulCheck(db, values) {
         previous_text,
         current_text,
         detected_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).bind(
-      checkId,
-      values.userId,
-      values.collectionId,
-      values.law.id,
-      change.changeType,
-      change.provisionKey,
-      change.provisionTitle,
-      change.previousHash,
-      change.currentHash,
-      values.checkedAt
-    ));
+  checkId,
+  values.userId,
+  values.collectionId,
+  values.law.id,
+  change.changeType,
+  change.provisionKey,
+  change.provisionTitle,
+  change.previousHash,
+  change.currentHash,
+  change.previousText,
+  change.currentText,
+  values.checkedAt
+));
   }
 
   await db.batch(statements);
@@ -576,9 +734,10 @@ export async function onRequestPost({ request, env }) {
           throw new Error('Vorheriger Snapshot ist beschädigt oder nicht lesbar');
         }
 
-        const previousComparable = previousParsed?.snapshotType === 'ris-metadata'
-          ? previousParsed
-          : null;
+        const previousComparable =
+  previousParsed?.snapshotType === 'ris-text'
+    ? previousParsed
+    : null;
 
         const changes = previousComparable
           ? compareSnapshots(previousComparable, current.snapshot)
