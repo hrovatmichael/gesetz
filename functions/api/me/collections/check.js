@@ -9,7 +9,8 @@ const RIS_DOCUMENT_HOSTS = new Set([
   'ogd.ris.bka.gv.at'
 ]);
 
-const MAX_TEXT_PER_PROVISION = 60000;
+const MAX_TEXT_PER_PROVISION = 20000;
+const MAX_TOTAL_SNAPSHOT_TEXT = 700000;
 
 const HEADERS = {
   'Content-Type': 'application/json; charset=utf-8',
@@ -329,9 +330,13 @@ async function buildMetadataSnapshot(risNumber) {
     throw new Error('Keine passenden RIS-Dokumente gefunden');
   }
 
-  const duplicateCounter = new Map();
-  const provisions = {};
-  const dates = [];
+ const duplicateCounter = new Map();
+const provisions = {};
+const dates = [];
+
+let totalStoredTextLength = 0;
+let truncatedTextCount = 0;
+let missingTextCount = 0;
 
   for (const document of documents) {
     const duplicateNumber = duplicateCounter.get(document.key) || 0;
@@ -346,6 +351,39 @@ async function buildMetadataSnapshot(risNumber) {
 
 const textResult =
   await loadRisDocumentText(documentUrl);
+
+const remainingTextLength =
+  Math.max(
+    0,
+    MAX_TOTAL_SNAPSHOT_TEXT -
+      totalStoredTextLength
+  );
+
+let storedText = textResult.text
+  ? textResult.text.slice(
+      0,
+      Math.min(
+        MAX_TEXT_PER_PROVISION,
+        remainingTextLength
+      )
+    )
+  : null;
+
+if (textResult.text && !storedText) {
+  missingTextCount++;
+}
+
+if (
+  textResult.text &&
+  storedText &&
+  storedText.length < textResult.text.length
+) {
+  truncatedTextCount++;
+}
+
+if (storedText) {
+  totalStoredTextLength += storedText.length;
+}
 
 const metadataState = {
   documentId:
@@ -368,9 +406,8 @@ const metadataState = {
 
 const comparisonState = {
   metadata: metadataState,
-  text: textResult.text
+  text: storedText
 };
-
 provisions[key] = {
   key,
   title:
@@ -381,8 +418,17 @@ provisions[key] = {
     await sha256(
       stableStringify(comparisonState)
     ),
-  text: textResult.text,
-  textError: textResult.error,
+ text: storedText,
+textError:
+  textResult.error ||
+  (
+    textResult.text && !storedText
+      ? 'Snapshot-Textgrenze erreicht'
+      : textResult.text &&
+        storedText.length < textResult.text.length
+      ? 'Gesetzestext wurde für den Snapshot gekürzt'
+      : null
+  ),
   metadata: metadataState
 };
 
@@ -397,9 +443,12 @@ provisions[key] = {
  const snapshot = {
   schemaVersion: 3,
   snapshotType: 'ris-text',
-  risNumber,
+  risNumberconst warning
   limitedToFirstPage:
     sourceDocuments.length === 100,
+  totalStoredTextLength,
+  truncatedTextCount,
+  missingTextCount,
   provisions
 };
 
@@ -763,9 +812,32 @@ export async function onRequestPost({ request, env }) {
           summary.limitedSnapshots++;
         }
 
-        const warning = current.limitedToFirstPage
-          ? 'Snapshot umfasst nur die ersten 100 RIS-Dokumente.'
-          : null;
+       const warnings = [];
+
+if (current.limitedToFirstPage) {
+  warnings.push(
+    'Snapshot umfasst nur die ersten 100 RIS-Dokumente.'
+  );
+}
+
+if (current.snapshot.truncatedTextCount > 0) {
+  warnings.push(
+    current.snapshot.truncatedTextCount +
+    ' Dokumenttext(e) wurden wegen der Größenbegrenzung gekürzt.'
+  );
+}
+
+if (current.snapshot.missingTextCount > 0) {
+  warnings.push(
+    current.snapshot.missingTextCount +
+    ' Dokumenttext(e) konnten nicht im Snapshot gespeichert werden.'
+  );
+}
+
+const warning =
+  warnings.length
+    ? warnings.join(' ')
+    : null;
 
         const checkId = await saveSuccessfulCheck(db, {
           userId,
