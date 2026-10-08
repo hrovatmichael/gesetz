@@ -6,5 +6,88 @@ function at(o,p){let v=o;for(const k of p)v=v?.[k];return typeof v==='string'?v.
 function first(o,paths){for(const p of paths){const v=at(o,p);if(v)return v}return ''}
 function docs(j){const v=j?.OgdSearchResult?.OgdDocumentResults?.OgdDocumentReference;return !v?[]:Array.isArray(v)?v:[v]}
 function num(d){const m=d?.Data?.Metadaten||{};const n=first(m,[['Bundesrecht','BrKons','Gesetzesnummer'],['Bundesrecht','Gesetzesnummer'],['Technisch','Gesetzesnummer']]);if(/^\d{8}$/.test(n))return n;return first(m,[['Allgemein','DokumentUrl']]).match(/[?&]Gesetzesnummer=(\d{8})(?:&|$)/i)?.[1]||''}
-async function resolve(risNumber){const u=new URL(RIS_API);u.searchParams.set('Applikation','BrKons');u.searchParams.set('Gesetzesnummer',risNumber);u.searchParams.set('DokumenteProSeite','OneHundred');u.searchParams.set('Seitennummer','1');const r=await fetch(u.toString(),{headers:{Accept:'application/json'}});if(!r.ok)throw Error('RIS HTTP '+r.status);const j=await r.json();if(j?.OgdSearchResult?.Error)throw Error('RIS-Prüfung fehlgeschlagen');const d=docs(j).find(x=>num(x)===risNumber);if(!d)return null;const m=d?.Data?.Metadaten||{};const title=first(m,[['Bundesrecht','Titel'],['Bundesrecht','Kurztitel'],['Bundesrecht','BrKons','Titel']]).replace(/<[^>]*>/g,' ').replace(/\s+/g,' ').trim();const link=new URL('https://www.ris.bka.gv.at/GeltendeFassung.wxe');link.searchParams.set('Abfrage','Bundesnormen');link.searchParams.set('Gesetzesnummer',risNumber);return {id:risNumber,risNumber,title:title||`RIS-Vorschrift ${risNumber}`,risUrl:link.href}}
-export async function onRequestPost({request,env}){if(!sameOrigin(request))return respond({error:'Ungültiger Ursprung.'},403);const auth=await requireUser(request,env);if(auth.error)return auth.error;if(!env.COLLECTIONS_DB)return respond({error:'D1-Binding COLLECTIONS_DB fehlt.'},503);if(!(request.headers.get('content-type')||'').toLowerCase().includes('application/json'))return respond({error:'JSON erforderlich.'},415);let input;try{input=JSON.parse(await request.text())}catch{return respond({error:'Ungültiges JSON.'},400)}const collectionId=String(input?.collectionId||'').trim(),risNumber=String(input?.risNumber||'').trim();if(collectionId.length>120||!/^\d{8}$/.test(risNumber))return respond({error:'Ungültige Sammlung oder RIS-Gesetzesnummer.'},400);const db=env.COLLECTIONS_DB,userId=auth.me.id;try{if(collectionId){const collection=await db.prepare('SELECT id FROM personal_collections WHERE id=? AND user_id=?').bind(collectionId,userId).first();if(!collection)return respond({error:'Sammlung nicht gefunden.'},404);}const law=await resolve(risNumber);if(!law)return respond({error:'Die RIS-Vorschrift wurde nicht eindeutig gefunden.'},422);const statements=[db.prepare("INSERT INTO ris_laws (id,ris_number,title,ris_url,check_status) VALUES (?,?,?,?,'pending') ON CONFLICT(ris_number) DO UPDATE SET title=excluded.title,ris_url=excluded.ris_url").bind(law.id,law.risNumber,law.title,law.risUrl),db.prepare('INSERT OR IGNORE INTO personal_laws (user_id,law_id) VALUES (?,?)').bind(userId,law.id)];if(collectionId){statements.push(db.prepare('INSERT OR IGNORE INTO personal_collection_laws (user_id,collection_id,law_id) VALUES (?,?,?)').bind(userId,collectionId,law.id));}await db.batch(statements);return respond({success:true,collectionId,law:{...law,checkStatus:'pending'},message:collectionId?'Vorschrift wurde RIS-geprüft und der Sammlung hinzugefügt.':'Vorschrift wurde RIS-geprüft und unter „Noch keiner Sammlung zugewiesen“ gespeichert.'},201)}catch(e){console.error('Vorschrift hinzufügen:',e);return respond({error:'Vorschrift konnte nicht hinzugefügt werden.'},503)}}
+async function resolve(risNumber) {
+  const u = new URL(RIS_API);
+
+  u.searchParams.set('Applikation', 'BrKons');
+  u.searchParams.set('Gesetzesnummer', risNumber);
+  u.searchParams.set('DokumenteProSeite', 'OneHundred');
+  u.searchParams.set('Seitennummer', '1');
+
+  const r = await fetch(u.toString(), {
+    headers: { Accept: 'application/json' }
+  });
+
+  if (!r.ok) {
+    throw Error('RIS HTTP ' + r.status);
+  }
+
+  const j = await r.json();
+
+  if (j?.OgdSearchResult?.Error) {
+    throw Error('RIS-Prüfung fehlgeschlagen');
+  }
+
+  const d = docs(j).find(x => num(x) === risNumber);
+
+  if (!d) return null;
+
+  const m = d?.Data?.Metadaten || {};
+
+  const cleanText = value =>
+    String(value || '')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const title = cleanText(first(m, [
+    ['Bundesrecht', 'Titel'],
+    ['Bundesrecht', 'Kurztitel'],
+    ['Bundesrecht', 'BrKons', 'Titel']
+  ]));
+
+  const shortTitle = cleanText(first(m, [
+    ['Bundesrecht', 'Kurztitel'],
+    ['Bundesrecht', 'BrKons', 'Kurztitel']
+  ]));
+
+  const link = new URL(
+    'https://www.ris.bka.gv.at/GeltendeFassung.wxe'
+  );
+
+  link.searchParams.set('Abfrage', 'Bundesnormen');
+  link.searchParams.set('Gesetzesnummer', risNumber);
+
+  return {
+    id: risNumber,
+    risNumber,
+    title: title || `RIS-Vorschrift ${risNumber}`,
+    shortTitle,
+    risUrl: link.href
+ 
+export async function onRequestPost({request,env}){if(!sameOrigin(request))return respond({error:'Ungültiger Ursprung.'},403);const auth=await requireUser(request,env);if(auth.error)return auth.error;if(!env.COLLECTIONS_DB)return respond({error:'D1-Binding COLLECTIONS_DB fehlt.'},503);if(!(request.headers.get('content-type')||'').toLowerCase().includes('application/json'))return respond({error:'JSON erforderlich.'},415);let input;try{input=JSON.parse(await request.text())}catch{return respond({error:'Ungültiges JSON.'},400)}const collectionId=String(input?.collectionId||'').trim(),risNumber=String(input?.risNumber||'').trim();if(collectionId.length>120||!/^\d{8}$/.test(risNumber))return respond({error:'Ungültige Sammlung oder RIS-Gesetzesnummer.'},400);const db=env.COLLECTIONS_DB,userId=auth.me.id;try{if(collectionId){const collection=await db.prepare('SELECT id FROM personal_collections WHERE id=? AND user_id=?').bind(collectionId,userId).first();if(!collection)return respond({error:'Sammlung nicht gefunden.'},404);}const law=await resolve(risNumber);if(!law)return respond({error:'Die RIS-Vorschrift wurde nicht eindeutig gefunden.'},422);const statements=[db.prepare(`
+  INSERT INTO ris_laws (
+    id,
+    ris_number,
+    title,
+    short_title,
+    ris_url,
+    check_status
+  )
+  VALUES (?, ?, ?, ?, ?, 'pending')
+  ON CONFLICT(ris_number) DO UPDATE SET
+    title = excluded.title,
+    short_title = CASE
+      WHEN excluded.short_title IS NOT NULL
+       AND excluded.short_title <> ''
+      THEN excluded.short_title
+      ELSE ris_laws.short_title
+    END,
+    ris_url = excluded.ris_url
+`).bind(
+  law.id,
+  law.risNumber,
+  law.title,
+  law.shortTitle || null,
+  law.risUrl
+)),db.prepare('INSERT OR IGNORE INTO personal_laws (user_id,law_id) VALUES (?,?)').bind(userId,law.id)];if(collectionId){statements.push(db.prepare('INSERT OR IGNORE INTO personal_collection_laws (user_id,collection_id,law_id) VALUES (?,?,?)').bind(userId,collectionId,law.id));}await db.batch(statements);return respond({success:true,collectionId,law:{...law,checkStatus:'pending'},message:collectionId?'Vorschrift wurde RIS-geprüft und der Sammlung hinzugefügt.':'Vorschrift wurde RIS-geprüft und unter „Noch keiner Sammlung zugewiesen“ gespeichert.'},201)}catch(e){console.error('Vorschrift hinzufügen:',e);return respond({error:'Vorschrift konnte nicht hinzugefügt werden.'},503)}}
