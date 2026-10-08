@@ -367,36 +367,37 @@ async function loadReportData(
       )
       .all();
 
-  const changesResult =
-    await db.prepare(`
-      SELECT
-   SELECT
-  pci.id,
-  pci.check_id,
-  pci.collection_id,
-  pci.law_id,
-  pci.change_type,
-  pci.provision_key,
-  pci.detected_at,
-        pc.name AS collection_name,
-        rl.title AS law_title,
-        rl.ris_number,
-        rl.ris_url
-      FROM personal_law_change_items AS pci
-      JOIN personal_collections AS pc
-        ON pc.id = pci.collection_id
-       AND pc.user_id = pci.user_id
-      JOIN ris_laws AS rl
-        ON rl.id = pci.law_id
-      WHERE pci.user_id = ?
-        AND pci.detected_at >= ?
-      ORDER BY
-        pci.detected_at DESC,
-        pci.id DESC
-    `)
-      .bind(
-        userId,
-        since
+ const changesResult =
+  await db.prepare(`
+    SELECT
+      pci.id,
+      pci.check_id,
+      pci.collection_id,
+      pci.law_id,
+      pci.change_type,
+      pci.provision_key,
+      pci.detected_at,
+      pc.name AS collection_name,
+      rl.title AS law_title,
+      rl.ris_number,
+      rl.ris_url
+    FROM personal_law_change_items AS pci
+    JOIN personal_collections AS pc
+      ON pc.id = pci.collection_id
+     AND pc.user_id = pci.user_id
+    JOIN ris_laws AS rl
+      ON rl.id = pci.law_id
+    WHERE pci.user_id = ?
+      AND pci.detected_at >= ?
+    ORDER BY
+      pci.detected_at DESC,
+      pci.id DESC
+  `)
+    .bind(
+      userId,
+      since
+    )
+    .all();
       )
       .all();
 
