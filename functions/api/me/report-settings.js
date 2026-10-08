@@ -252,11 +252,12 @@ export async function onRequestPost({
     );
 
     return json(
-      {
-        error:
-          'Report-Einstellungen konnten nicht gespeichert werden.'
-      },
-      503
-    );
+  {
+    error: String(
+      error?.message || error
+    )
+  },
+  503
+);
   }
 }
