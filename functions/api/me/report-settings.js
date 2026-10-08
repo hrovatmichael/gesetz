@@ -13,24 +13,38 @@ function validEmail(value) {
 }
 
 export async function onRequestGet({ request, env }) {
-  const auth = await requireUser(request, env);
-  if (auth.error) return auth.error;
+
+  const auth =
+    await requireUser(
+      request,
+      env
+    );
+
+  if (auth.error) {
+    return auth.error;
+  }
 
   if (!env.COLLECTIONS_DB) {
+
     return json(
-      { error: 'D1-Binding COLLECTIONS_DB fehlt.' },
+      {
+        error:
+          'D1-Binding COLLECTIONS_DB fehlt.'
+      },
       503
     );
   }
 
   try {
+
     const row =
       await env.COLLECTIONS_DB
         .prepare(`
           SELECT
-            email,
+            recipients,
             daily_enabled,
-            send_hour
+            send_hour,
+            send_when_empty
           FROM report_settings
           WHERE user_id = ?
         `)
@@ -38,11 +52,22 @@ export async function onRequestGet({ request, env }) {
         .first();
 
     return json({
-      email: row?.email || '',
+      recipients:
+        JSON.parse(
+          row?.recipients || '[]'
+        ),
       dailyEnabled:
-        Number(row?.daily_enabled || 0) === 1,
+        Number(
+          row?.daily_enabled || 0
+        ) === 1,
+      sendWhenEmpty:
+        Number(
+          row?.send_when_empty || 0
+        ) === 1,
       sendHour:
-        Number.isInteger(row?.send_hour)
+        Number.isInteger(
+          row?.send_hour
+        )
           ? row.send_hour
           : DEFAULT_HOUR
     });
@@ -64,11 +89,18 @@ export async function onRequestGet({ request, env }) {
   }
 }
 
-export async function onRequestPost({ request, env }) {
+export async function onRequestPost({
+  request,
+  env
+}) {
 
   if (!sameOrigin(request)) {
+
     return json(
-      { error: 'Ungültiger Ursprung.' },
+      {
+        error:
+          'Ungültiger Ursprung.'
+      },
       403
     );
   }
@@ -84,6 +116,7 @@ export async function onRequestPost({ request, env }) {
   }
 
   if (!env.COLLECTIONS_DB) {
+
     return json(
       {
         error:
@@ -96,7 +129,10 @@ export async function onRequestPost({ request, env }) {
   let body;
 
   try {
-    body = await request.json();
+
+    body =
+      await request.json();
+
   } catch {
 
     return json(
@@ -108,14 +144,25 @@ export async function onRequestPost({ request, env }) {
     );
   }
 
-  const email =
-    sanitizeEmail(
-      body?.email
-    );
+  const recipients =
+    Array.isArray(
+      body?.recipients
+    )
+      ? body.recipients
+          .map(
+            sanitizeEmail
+          )
+          .filter(Boolean)
+      : [];
 
   const dailyEnabled =
     Boolean(
       body?.dailyEnabled
+    );
+
+  const sendWhenEmpty =
+    Boolean(
+      body?.sendWhenEmpty
     );
 
   const sendHour =
@@ -124,20 +171,37 @@ export async function onRequestPost({ request, env }) {
       Math.min(
         23,
         parseInt(
-          body?.sendHour ?? DEFAULT_HOUR,
+          body?.sendHour ??
+          DEFAULT_HOUR,
           10
         ) || DEFAULT_HOUR
       )
     );
 
-  if (!validEmail(email)) {
+  if (!recipients.length) {
+
     return json(
       {
         error:
-          'Ungültige E-Mail-Adresse.'
+          'Mindestens ein Empfänger erforderlich.'
       },
       400
     );
+  }
+
+  for (const email of recipients) {
+
+    if (!validEmail(email)) {
+
+      return json(
+        {
+          error:
+            'Ungültige E-Mail-Adresse: ' +
+            email
+        },
+        400
+      );
+    }
   }
 
   try {
@@ -146,30 +210,37 @@ export async function onRequestPost({ request, env }) {
       .prepare(`
         INSERT INTO report_settings (
           user_id,
-          email,
+          recipients,
           daily_enabled,
-          send_hour
+          send_hour,
+          send_when_empty
         )
-        VALUES (?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?)
 
         ON CONFLICT(user_id)
         DO UPDATE SET
-          email = excluded.email,
+          recipients = excluded.recipients,
           daily_enabled = excluded.daily_enabled,
-          send_hour = excluded.send_hour
+          send_hour = excluded.send_hour,
+          send_when_empty = excluded.send_when_empty,
+          updated_at = CURRENT_TIMESTAMP
       `)
       .bind(
         auth.me.id,
-        email,
+        JSON.stringify(
+          recipients
+        ),
         dailyEnabled ? 1 : 0,
-        sendHour
+        sendHour,
+        sendWhenEmpty ? 1 : 0
       )
       .run();
 
     return json({
       success: true,
-      email,
+      recipients,
       dailyEnabled,
+      sendWhenEmpty,
       sendHour
     });
 
