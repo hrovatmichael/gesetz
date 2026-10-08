@@ -370,14 +370,15 @@ async function loadReportData(
   const changesResult =
     await db.prepare(`
       SELECT
-        pci.id,
-        pci.check_id,
-        pci.collection_id,
-        pci.law_id,
-        pci.change_type,
-        pci.provision_key,
-        pci.provision_title,
-        pci.detected_at,
+   SELECT
+  pci.id,
+  pci.check_id,
+  pci.collection_id,
+  pci.law_id,
+  pci.change_type,
+  pci.provision_key,
+  pci.detected_at,
+
         pc.name AS collection_name,
         rl.title AS law_title,
         rl.ris_number,
