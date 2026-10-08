@@ -184,77 +184,60 @@ function encodeSubject(value) {
   );
 }
 
-async function gmailAccessToken(env) {
-  const required = [
-    'GMAIL_CLIENT_ID',
-    'GMAIL_CLIENT_SECRET',
-    'GMAIL_REFRESH_TOKEN'
-  ];
 
-  for (const key of required) {
-    if (!env[key]) {
-      throw new Error(
-        'Cloudflare Secret fehlt: ' + key
-      );
-    }
-  }
 
-  const response = await fetch(
-    'https://oauth2.googleapis.com/token',
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type':
-          'application/x-www-form-urlencoded'
-      },
-      body: new URLSearchParams({
-        client_id:
-          env.GMAIL_CLIENT_ID,
-        client_secret:
-          env.GMAIL_CLIENT_SECRET,
-        refresh_token:
-          env.GMAIL_REFRESH_TOKEN,
-        grant_type:
-          'refresh_token'
-      })
-    }
-  );
-
-  const responseText =
-    await response.text();
-
-  let data;
-
-  try {
-    data = JSON.parse(responseText);
-  } catch {
-    data = {};
-  }
-
-  if (
-    !response.ok ||
-    !data.access_token
-  ) {
-    throw new Error(
-      'Gmail-Zugriffstoken konnte nicht geladen werden: ' +
-      (
-        data.error_description ||
-        data.error ||
-        responseText ||
-        'HTTP ' + response.status
-      )
-    );
-  }
-
-  return data.access_token;
-}
-
-async function sendGmail({
+async function sendEmail({
   env,
   recipients,
   subject,
   html
 }) {
+
+  if (!env.RESEND_API_KEY) {
+
+    throw new Error(
+      'Cloudflare Secret RESEND_API_KEY fehlt.'
+    );
+
+  }
+
+  const response = await fetch(
+    'https://api.resend.com/emails',
+    {
+      method: 'POST',
+      headers: {
+        Authorization:
+          `Bearer ${env.RESEND_API_KEY}`,
+        'Content-Type':
+          'application/json'
+      },
+      body: JSON.stringify({
+        from:
+          'Rechtsmonitor <onboarding@resend.dev>',
+        to:
+          recipients,
+        subject,
+        html
+      })
+    }
+  );
+
+  const result =
+    await response.json();
+
+  if (!response.ok) {
+
+    throw new Error(
+      result?.message ||
+      result?.error ||
+      'Resend Versand fehlgeschlagen.'
+    );
+
+  }
+
+  return result;
+}
+
   const sender = String(
     env.GMAIL_SENDER || ''
   ).trim();
@@ -954,7 +937,7 @@ export async function onRequestPost({
       );
 
     const gmailResult =
-      await sendGmail({
+  await sendEmail({
         env,
         recipients,
         subject,
